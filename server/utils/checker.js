@@ -10,6 +10,25 @@ class StockChecker {
     this.checkCount = 0;
   }
 
+  // Persist global check stats into DB so the UI can show them even after server restart.
+  // app_settings is a key/value store.
+  _persistGlobalStats(nowIso) {
+    try {
+      db.prepare(
+        "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES ('last_check_at', ?, datetime('now'))"
+      ).run(String(nowIso));
+
+      const row = db.prepare("SELECT value FROM app_settings WHERE key = 'total_checks'").get();
+      const prev = parseInt(row?.value || '0', 10);
+      const next = Number.isFinite(prev) ? prev + 1 : 1;
+      db.prepare(
+        "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES ('total_checks', ?, datetime('now'))"
+      ).run(String(next));
+    } catch (e) {
+      console.warn('⚠️  Could not persist global stats:', e.message);
+    }
+  }
+
   async checkAll(forceProductId = null, { force = false } = {}) {
     if (this.isChecking) {
       if (forceProductId) {
@@ -49,6 +68,10 @@ class StockChecker {
       console.log(`📋 ${allProducts.length} total products, ${products.length} need checking`);
 
       if (products.length === 0) {
+        // Even if we skip because everything was checked recently, update global stats.
+        this.lastCheckTime = new Date().toISOString();
+        this.checkCount++;
+        this._persistGlobalStats(this.lastCheckTime);
         console.log('📭 All products checked recently, skipping');
         return;
       }
@@ -71,6 +94,7 @@ await Promise.all(products.map(product => limit(async () => {
 
       this.lastCheckTime = new Date().toISOString();
       this.checkCount++;
+      this._persistGlobalStats(this.lastCheckTime);
       console.log(`✅ Stock check #${this.checkCount} complete. Checked ${products.length}/${allProducts.length} products.`);
 
     } catch (error) {

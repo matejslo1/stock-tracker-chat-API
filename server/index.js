@@ -40,6 +40,10 @@ function rescheduleGlobalCheck() {
 
 const app = express();
 
+// Railway (and most PaaS) sits behind a reverse proxy and sets X-Forwarded-* headers.
+// This is required so express-rate-limit can correctly identify client IPs.
+app.set('trust proxy', 1);
+
 // Security: simple API key auth for /api routes (set API_KEY in env)
 const apiAuth = (req, res, next) => {
   const expected = process.env.API_KEY;
@@ -205,10 +209,15 @@ res.json({ ok: true });
 app.get("/api/status", (req, res) => {
   try {
     const status = checker.getStatus();
+    const lastCheckRow = db.prepare("SELECT value FROM app_settings WHERE key = 'last_check_at'").get();
+    const totalChecksRow = db.prepare("SELECT value FROM app_settings WHERE key = 'total_checks'").get();
     const intervalRow = db.prepare("SELECT value FROM app_settings WHERE key = 'check_interval_minutes'").get();
     const autoPurchaseRow = db.prepare("SELECT value FROM app_settings WHERE key = 'auto_purchase_enabled'").get();
     res.json({
       ...status,
+      // Prefer persisted values (survive restarts) for dashboard.
+      lastCheckTime: lastCheckRow?.value || status.lastCheckTime,
+      checkCount: totalChecksRow ? parseInt(totalChecksRow.value || '0', 10) : status.checkCount,
       telegramConnected: telegram.isReady(),
       checkInterval: parseInt(intervalRow?.value || process.env.CHECK_INTERVAL_MINUTES || 5),
       autoPurchaseEnabled: (autoPurchaseRow?.value || process.env.AUTO_PURCHASE_ENABLED) === 'true',
