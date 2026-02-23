@@ -86,23 +86,6 @@ async function initDatabase() {
     )
   `);
 
-  
-// Helpful indexes (speed up filtering & history lookups)
-db.run(`
-  CREATE INDEX IF NOT EXISTS idx_products_store ON products(store);
-  CREATE INDEX IF NOT EXISTS idx_products_in_stock ON products(in_stock);
-  CREATE INDEX IF NOT EXISTS idx_products_last_checked ON products(last_checked);
-
-  CREATE INDEX IF NOT EXISTS idx_stock_history_product_checked ON stock_history(product_id, checked_at);
-
-  CREATE INDEX IF NOT EXISTS idx_notifications_product_sent ON notifications(product_id, sent_at);
-  CREATE INDEX IF NOT EXISTS idx_notifications_new_product_sent ON notifications_new(product_id, sent_at);
-
-  CREATE INDEX IF NOT EXISTS idx_purchase_attempts_product_attempted ON purchase_attempts(product_id, attempted_at);
-
-  CREATE INDEX IF NOT EXISTS idx_keyword_watches_store ON keyword_watches(store_name);
-  CREATE INDEX IF NOT EXISTS idx_keyword_watches_last_checked ON keyword_watches(last_checked);
-`);
 // Add check_interval_minutes column if it doesn't exist (migration)
   try {
     db.run('ALTER TABLE products ADD COLUMN check_interval_minutes INTEGER DEFAULT 0');
@@ -326,6 +309,22 @@ db.run(`
       // Ignore duplicates
     }
   });
+
+  // Helpful indexes (speed up filtering & history lookups)
+  // NOTE: create indexes AFTER ALL tables exist. Otherwise a fresh DB will crash.
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_products_store ON products(store);
+    CREATE INDEX IF NOT EXISTS idx_products_in_stock ON products(in_stock);
+    CREATE INDEX IF NOT EXISTS idx_products_last_checked ON products(last_checked);
+
+    CREATE INDEX IF NOT EXISTS idx_stock_history_product_checked ON stock_history(product_id, checked_at);
+
+    CREATE INDEX IF NOT EXISTS idx_notifications_product_sent ON notifications(product_id, sent_at);
+    CREATE INDEX IF NOT EXISTS idx_purchase_attempts_product_attempted ON purchase_attempts(product_id, attempted_at);
+
+    CREATE INDEX IF NOT EXISTS idx_keyword_watches_store ON keyword_watches(store_name);
+    CREATE INDEX IF NOT EXISTS idx_keyword_watches_last_checked ON keyword_watches(last_checked);
+  `);
 
   saveToFile();
   const periodicMs = parseInt(process.env.SAVE_INTERVAL_MS || '60000', 10);
