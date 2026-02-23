@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["nodejs_18"]
+nixPkgs = ["nodejs_20"]
 
 [phases.install]
 cmds = [
@@ -11,7 +11,7 @@ cmds = [
 [phases.build]
 cmds = [
   "cd client && npm run build",
-  "cp -r client/build/* server/public/"
+  "cp -r client/dist/* server/public/"
 ]
 
 [start]

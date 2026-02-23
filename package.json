@@ -4,10 +4,10 @@
   "private": true,
   "description": "Product stock tracker with Telegram notifications",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "scripts": {
-    "build": "npm --prefix server install && npm --prefix client install && npm --prefix client run build",
+    "build": "npm --prefix server install && npm --prefix client install && npm --prefix client run build && cp -r client/dist/* server/public/",
     "start": "node server/index.js"
   }
 }
