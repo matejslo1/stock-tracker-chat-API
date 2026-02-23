@@ -7,7 +7,7 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "start": "cd server && node index.js",
-    "build": "cd client && npm install && npm run build"
+    "build": "npm --prefix server install && npm --prefix client install && npm --prefix client run build",
+    "start": "node server/index.js"
   }
 }
