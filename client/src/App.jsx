@@ -193,7 +193,7 @@ const ProductModal = ({ product, stores, onSave, onClose, appSettings }) => {
     setAnalyzing(true);
     setAnalyzeResult(null);
     try {
-      const res = await fetch(`${API}/analyze-url`, {
+      const res = await apiFetch(`${API}/analyze-url`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: form.url }),
       });
@@ -656,13 +656,13 @@ export default function StockTracker() {
   const fetchData = useCallback(async () => {
     try {
       const [prods, sts, stat, notifs, kwWatches, domains, settings] = await Promise.all([
-        fetch(`${API}/products`).then(r => r.json()),
-        fetch(`${API}/stores`).then(r => r.json()),
-        fetch(`${API}/status`).then(r => r.json()),
-        fetch(`${API}/notifications`).then(r => r.json()),
-        fetch(`${API}/keyword-watches`).then(r => r.json()),
-        fetch(`${API}/cart/domains`).then(r => r.json()).catch(() => []),
-        fetch(`${API}/app-settings`).then(r => r.json()).catch(() => ({})),
+        apiFetch(`${API}/products`).then(r => r.json()),
+        apiFetch(`${API}/stores`).then(r => r.json()),
+        apiFetch(`${API}/status`).then(r => r.json()),
+        apiFetch(`${API}/notifications`).then(r => r.json()),
+        apiFetch(`${API}/keyword-watches`).then(r => r.json()),
+        apiFetch(`${API}/cart/domains`).then(r => r.json()).catch(() => []),
+        apiFetch(`${API}/app-settings`).then(r => r.json()).catch(() => ({})),
       ]);
       setProducts(prods);
       setStores(sts);
@@ -679,7 +679,7 @@ export default function StockTracker() {
 
   const fetchTelegramSettings = useCallback(async () => {
     try {
-      const data = await fetch(`${API}/telegram/settings`).then(r => r.json());
+      const data = await apiFetch(`${API}/telegram/settings`).then(r => r.json());
       setTelegramSettings(data);
       setTelegramForm({ token: data.token || "", chatId: data.chatId || "" });
     } catch (e) { /* ignore */ }
@@ -703,7 +703,7 @@ export default function StockTracker() {
 
   const handleAdd = async (data) => {
     try {
-      const res = await fetch(`${API}/products`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      const res = await apiFetch(`${API}/products`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
       if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
       showToast("Izdelek dodan za sledenje!", "success");
       setShowModal(false);
@@ -713,7 +713,7 @@ export default function StockTracker() {
 
   const handleEdit = async (data) => {
     try {
-      await fetch(`${API}/products/${editProduct.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      await apiFetch(`${API}/products/${editProduct.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
       showToast("Izdelek posodobljen!", "success");
       setEditProduct(null);
       fetchData();
@@ -722,27 +722,27 @@ export default function StockTracker() {
 
   const handleDelete = async (id) => {
     if (!confirm("Ali res želiš odstraniti ta izdelek?")) return;
-    await fetch(`${API}/products/${id}`, { method: "DELETE" });
+    await apiFetch(`${API}/products/${id}`, { method: "DELETE" });
     showToast("Izdelek odstranjen", "info");
     fetchData();
   };
 
   const handleCheck = async (id) => {
     setCheckingId(id);
-    await fetch(`${API}/check/${id}`, { method: "POST" });
+    await apiFetch(`${API}/check/${id}`, { method: "POST" });
     showToast("Preverjanje zaloge...", "info");
     setTimeout(() => { fetchData(); setCheckingId(null); }, 5000);
   };
 
   const handleCheckAll = async () => {
     setCheckingId("all");
-    await fetch(`${API}/check`, { method: "POST" });
+    await apiFetch(`${API}/check`, { method: "POST" });
     showToast("Preverjam vse izdelke...", "info");
     setTimeout(() => { fetchData(); setCheckingId(null); }, 10000);
   };
 
   const handleTestTelegram = async () => {
-    const res = await fetch(`${API}/telegram/test`, { method: "POST" });
+    const res = await apiFetch(`${API}/telegram/test`, { method: "POST" });
     const data = await res.json();
     showToast(data.success ? "Telegram test uspešen!" : "Telegram ni povezan", data.success ? "success" : "error");
   };
@@ -751,7 +751,7 @@ export default function StockTracker() {
     if (!telegramForm.token) { showToast("Token je obvezen", "error"); return; }
     setSavingTelegram(true);
     try {
-      const res = await fetch(`${API}/telegram/settings`, {
+      const res = await apiFetch(`${API}/telegram/settings`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: telegramForm.token, chatId: telegramForm.chatId }),
       });
@@ -767,7 +767,7 @@ export default function StockTracker() {
   // Keyword watch handlers
   const handleAddKeywordWatch = async (data) => {
     try {
-      const res = await fetch(`${API}/keyword-watches`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      const res = await apiFetch(`${API}/keyword-watches`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
       if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
       showToast("Iskanje dodano! Prvo preverjanje teče ...", "success");
       setShowKeywordModal(false);
@@ -777,7 +777,7 @@ export default function StockTracker() {
 
   const handleEditKeywordWatch = async (data) => {
     try {
-      await fetch(`${API}/keyword-watches/${editKeyword.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      await apiFetch(`${API}/keyword-watches/${editKeyword.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
       showToast("Iskanje posodobljeno!", "success");
       setEditKeyword(null);
       fetchData();
@@ -786,7 +786,7 @@ export default function StockTracker() {
 
   const handleDeleteKeywordWatch = async (id) => {
     if (!confirm("Odstrani to iskanje?")) return;
-    await fetch(`${API}/keyword-watches/${id}`, { method: "DELETE" });
+    await apiFetch(`${API}/keyword-watches/${id}`, { method: "DELETE" });
     showToast("Iskanje odstranjeno", "info");
     fetchData();
   };
@@ -796,7 +796,7 @@ export default function StockTracker() {
     if (selectedIds.size === 0) return;
     if (!confirm(`Odstranil boš ${selectedIds.size} označenih izdelkov. Si prepričan?`)) return;
     try {
-      await fetch(`${API}/products/bulk-delete`, {
+      await apiFetch(`${API}/products/bulk-delete`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: [...selectedIds] }),
       });
@@ -824,14 +824,14 @@ export default function StockTracker() {
 
   const handleCheckKeywordWatch = async (id) => {
     setCheckingId(`kw-${id}`);
-    await fetch(`${API}/keyword-watches/${id}/check`, { method: "POST" });
+    await apiFetch(`${API}/keyword-watches/${id}/check`, { method: "POST" });
     showToast("Iščem ...", "info");
     setTimeout(() => { fetchData(); setCheckingId(null); }, 5000);
   };
 
   const handleResetKeywordWatch = async (id) => {
     if (!confirm("Resetiraj znane izdelke? Ob naslednjem preverjanju boš dobil obvestila za vse najdene izdelke.")) return;
-    await fetch(`${API}/keyword-watches/${id}/reset`, { method: "POST" });
+    await apiFetch(`${API}/keyword-watches/${id}/reset`, { method: "POST" });
     showToast("Resetirano", "info");
     fetchData();
   };
@@ -839,7 +839,7 @@ export default function StockTracker() {
   const handleBuildCart = async (domain) => {
     setBuildingCart(domain);
     try {
-      const res = await fetch(`${API}/cart/build`, {
+      const res = await apiFetch(`${API}/cart/build`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ domain }),
       });

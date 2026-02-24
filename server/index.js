@@ -63,7 +63,7 @@ const apiAuth = (req, res, next) => {
 // Security: basic rate limiting for API
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 60,
+  max: 300,
   standardHeaders: true,
   legacyHeaders: false
 });
