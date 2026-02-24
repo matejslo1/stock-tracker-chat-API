@@ -1154,7 +1154,7 @@ export default function StockTracker() {
                       </button>
                       {cartUrls[domain.domain] && (
                         <>
-                          <a href={(() => { try { return new URL(cartUrls[domain.domain]).origin + '/cart'; } catch(e) { return '#'; } })()}
+                          <a href={cartUrls[domain.domain]}
                             target="_blank" rel="noopener noreferrer"
                             className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-bold transition-colors">
                             <Eye size={14} /> Odpri košarico
