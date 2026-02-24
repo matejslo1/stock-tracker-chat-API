@@ -29,13 +29,15 @@ const getGlobalIntervalMinutes = () => {
 };
 
 function rescheduleGlobalCheck() {
-  const intervalMin = getGlobalIntervalMinutes();
   if (globalCheckJob) {
     globalCheckJob.stop();
     globalCheckJob = null;
   }
-  globalCheckJob = cron.schedule(`*/${intervalMin} * * * *`, () => checker.checkAll());
-  console.log(`⏱️ Global stock check scheduled every ${intervalMin} minute(s)`);
+  // Run every minute — individual product intervals are respected inside checkAll()
+  // This ensures products with short intervals (e.g., 1 min) are actually checked on time
+  globalCheckJob = cron.schedule('* * * * *', () => checker.checkAll());
+  const intervalMin = getGlobalIntervalMinutes();
+  console.log(`⏱️ Global stock check cron: every 1 min (default product interval: ${intervalMin} min)`);
 }
 
 const app = express();

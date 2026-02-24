@@ -62,7 +62,14 @@ class StockChecker {
     console.log(`\n🔍 [${new Date().toLocaleTimeString()}] Starting stock check... (force=${force})`);
 
     try {
-      const globalInterval = parseInt(process.env.CHECK_INTERVAL_MINUTES || 5);
+      // Read global interval from DB app_settings (same source as the UI settings page)
+      let globalInterval = 5;
+      try {
+        const row = db.prepare("SELECT value FROM app_settings WHERE key = 'check_interval_minutes'").get();
+        const raw = row?.value ?? process.env.CHECK_INTERVAL_MINUTES ?? '5';
+        const n = parseInt(String(raw), 10);
+        if (Number.isFinite(n) && n >= 1) globalInterval = n;
+      } catch(e) {}
       const now = Date.now();
       const allProducts = db.prepare('SELECT * FROM products').all();
 
