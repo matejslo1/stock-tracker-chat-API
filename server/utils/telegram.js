@@ -545,6 +545,27 @@ class TelegramService {
     } catch (error) { console.error('Failed to send stock alert:', error.message); return false; }
   }
 
+  async sendOutOfStockAlert(product) {
+    if (!this.initialized || !this.chatId) return false;
+    if (this._isPaused() || this._isQuietHours()) {
+      console.log(`⏸ Out-of-stock alert skipped (${this._isPaused() ? 'paused' : 'quiet hours'})`);
+      return false;
+    }
+    const price = product.current_price ? `${product.current_price.toFixed(2)} ${product.currency || 'EUR'}` : 'N/A';
+    const message =
+      '📭 *IZDELEK RAZPRODAN!*\n\n' +
+      `📦 *${product.name}*\n🏪 Trgovina: ${product.store}\n💰 Zadnja cena: ${price}\n` +
+      `\n_Obvestilo bo prišlo ko bo spet na zalogi._`;
+    const keyboard = [[
+      { text: '🔗 Odpri izdelek', url: product.url },
+      { text: '🔄 Preveri zdaj', callback_data: `check_now_${product.id}` }
+    ]];
+    try {
+      await this.bot.sendMessage(this.chatId, message, { parse_mode: 'Markdown', disable_web_page_preview: true, reply_markup: { inline_keyboard: keyboard } });
+      return true;
+    } catch (error) { console.error('Failed to send out-of-stock alert:', error.message); return false; }
+  }
+
   async sendAllInStockCartAlert(products, cartUrl) {
     if (!this.initialized || !this.chatId || !cartUrl || products.length <= 1) return false;
     if (this._isPaused() || this._isQuietHours()) return false;

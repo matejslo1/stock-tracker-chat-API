@@ -1131,11 +1131,6 @@ export default function StockTracker() {
                       </button>
                       {cartUrls[domain.domain] && (
                         <>
-                          <a href={cartUrls[domain.domain]}
-                            target="_blank" rel="noopener noreferrer"
-                            className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-sm font-bold transition-colors">
-                            <ShoppingCart size={14} /> Dodaj v košarico
-                          </a>
                           <a href={(() => { try { return new URL(cartUrls[domain.domain]).origin + '/cart'; } catch(e) { return '#'; } })()}
                             target="_blank" rel="noopener noreferrer"
                             className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-bold transition-colors">

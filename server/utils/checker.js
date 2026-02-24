@@ -251,6 +251,16 @@ await Promise.all(products.map(product => limit(async () => {
       }
     }
 
+    // Izdelek je šel iz zaloge
+    if (!isNowInStock && wasInStock) {
+      console.log(`  📭 OUT OF STOCK: ${product.name}`);
+      if (product.notify_on_stock) {
+        await telegram.sendOutOfStockAlert(product);
+        db.prepare('INSERT INTO notifications (product_id, type, message) VALUES (?, ?, ?)')
+          .run(product.id, 'out_of_stock', `Product went out of stock. Last price: ${newPrice || oldPrice || 'N/A'}`);
+      }
+    }
+
     // Price dropped
     const priceDiff = oldPrice ? Math.round((oldPrice - newPrice) * 100) / 100 : 0;
     if (newPrice && oldPrice && priceDiff >= 0.05 && product.notify_on_price_drop) {
