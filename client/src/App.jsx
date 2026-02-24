@@ -312,6 +312,21 @@ const ProductModal = ({ product, stores, onSave, onClose, appSettings }) => {
             </div>
             <p className="text-xs text-gray-400 mt-1">0 = uporabi globalni interval iz nastavitev</p>
           </div>
+          <div>
+            <label className="text-sm font-semibold text-gray-700 mb-1 block">Filter cene (opcijsko)</label>
+            <div className="flex items-center gap-2">
+              <input type="number" min="0" step="0.01" placeholder="Min €"
+                value={form.min_price}
+                onChange={e => setForm(f => ({ ...f, min_price: e.target.value }))}
+                className="w-28 px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all" />
+              <span className="text-gray-400 text-sm">—</span>
+              <input type="number" min="0" step="0.01" placeholder="Max €"
+                value={form.max_price}
+                onChange={e => setForm(f => ({ ...f, max_price: e.target.value }))}
+                className="w-28 px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all" />
+            </div>
+            <p className="text-xs text-gray-400 mt-1">Ignorira izdelke izven tega cenovnega razpona</p>
+          </div>
           <div className="space-y-3 pt-2">
             {toggleFields.map(({ key, icon, label, color }) => (
               <label key={key} className="flex items-center gap-3 cursor-pointer group">
@@ -350,6 +365,8 @@ const KeywordModal = ({ watch, onSave, onClose, appSettings }) => {
     notify_in_stock: watch ? watch.notify_in_stock !== 0 : true,
     auto_add_tracking: watch ? watch.auto_add_tracking === 1 : false,
     check_interval_minutes: watch?.check_interval_minutes != null ? String(watch.check_interval_minutes) : "0",
+    min_price: watch?.min_price != null ? String(watch.min_price) : "",
+    max_price: watch?.max_price != null ? String(watch.max_price) : "",
   });
 
   const handleSubmit = () => {

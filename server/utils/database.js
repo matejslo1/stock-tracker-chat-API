@@ -213,6 +213,9 @@ async function initDatabase() {
 
   // Migration: add check_interval_minutes to keyword_watches (per-watch scan interval)
   try { db.run("ALTER TABLE keyword_watches ADD COLUMN check_interval_minutes INTEGER DEFAULT 0"); } catch(e) {}
+  // Migration: add price filters
+  try { db.run("ALTER TABLE keyword_watches ADD COLUMN min_price REAL DEFAULT NULL"); } catch(e) {}
+  try { db.run("ALTER TABLE keyword_watches ADD COLUMN max_price REAL DEFAULT NULL"); } catch(e) {}
 
   // Migration: fix products where store = hostname (e.g. 'tcgstar.eu') instead of valid store name
   // Auto-upgrade to 'shopify' for any unknown store that has /products/ in URL (Shopify pattern)

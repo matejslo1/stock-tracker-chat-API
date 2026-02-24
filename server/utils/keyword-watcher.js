@@ -353,7 +353,20 @@ class KeywordWatcher {
     let knownStockMap = {};
     try { knownStockMap = JSON.parse(watch.known_stock_map || '{}'); } catch(e) {}
 
-    const newProducts = foundProducts.filter(p => !knownUrls.includes(p.url));
+    // Apply price filters if set
+    const minPrice = watch.min_price ? parseFloat(watch.min_price) : null;
+    const maxPrice = watch.max_price ? parseFloat(watch.max_price) : null;
+    const priceFilteredProducts = foundProducts.filter(p => {
+      if (minPrice !== null && p.price !== null && p.price !== undefined && p.price < minPrice) return false;
+      if (maxPrice !== null && p.price !== null && p.price !== undefined && p.price > maxPrice) return false;
+      return true;
+    });
+    if (minPrice !== null || maxPrice !== null) {
+      console.log(`  Price filter (min:${minPrice} max:${maxPrice}): ${foundProducts.length} -> ${priceFilteredProducts.length} products`);
+    }
+    const filteredProducts = priceFilteredProducts;
+
+    const newProducts = filteredProducts.filter(p => !knownUrls.includes(p.url));
     console.log(`  Found ${foundProducts.length} products, ${newProducts.length} new`);
 
     // Notify new products
@@ -397,19 +410,19 @@ class KeywordWatcher {
 
     // Notify back-in-stock
     if (watch.notify_in_stock) {
-      const backInStock = foundProducts.filter(p => p.inStock === true && knownStockMap[p.url] === false);
+      const backInStock = filteredProducts.filter(p => p.inStock === true && knownStockMap[p.url] === false);
       if (backInStock.length > 0) {
         await telegram.sendKeywordAlert(watch, null, backInStock);
       }
     }
 
     // Update known maps
-    foundProducts.forEach(p => { if (p.inStock !== undefined) knownStockMap[p.url] = p.inStock; });
+    filteredProducts.forEach(p => { if (p.inStock !== undefined) knownStockMap[p.url] = p.inStock; });
     const trackedUrls = db.prepare('SELECT url FROM products').all().map(p => p.url);
-    const allKnownUrls = [...new Set([...knownUrls.filter(u => trackedUrls.includes(u)), ...foundProducts.map(p => p.url)])];
+    const allKnownUrls = [...new Set([...knownUrls.filter(u => trackedUrls.includes(u)), ...filteredProducts.map(p => p.url)])];
 
     db.prepare(`UPDATE keyword_watches SET known_product_urls=?, known_stock_map=?, last_checked=datetime('now'), last_found_count=?, updated_at=datetime('now') WHERE id=?`)
-      .run(JSON.stringify(allKnownUrls), JSON.stringify(knownStockMap), foundProducts.length, watch.id);
+      .run(JSON.stringify(allKnownUrls), JSON.stringify(knownStockMap), filteredProducts.length, watch.id);
 
     return { total: foundProducts.length, new: newProducts.length };
   }

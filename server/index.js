@@ -339,29 +339,31 @@ app.get("/api/keyword-watches", (req, res) => {
 
 app.post("/api/keyword-watches", async (req, res) => {
   try {
-    const { keyword, store_url, search_url, notify_new_products, notify_in_stock, auto_add_tracking, check_interval_minutes } = req.body;
+    const { keyword, store_url, search_url, notify_new_products, notify_in_stock, auto_add_tracking, check_interval_minutes, min_price, max_price } = req.body;
     if (!keyword || !store_url) return res.status(400).json({ error: "keyword and store_url required" });
 
-    // Runtime migration: ensure check_interval_minutes column exists (safe to run multiple times)
     try { db.prepare("ALTER TABLE keyword_watches ADD COLUMN check_interval_minutes INTEGER DEFAULT 0").run(); } catch(e) {}
+    try { db.prepare("ALTER TABLE keyword_watches ADD COLUMN min_price REAL DEFAULT NULL").run(); } catch(e) {}
+    try { db.prepare("ALTER TABLE keyword_watches ADD COLUMN max_price REAL DEFAULT NULL").run(); } catch(e) {}
 
-    // Detect store type synchronously from URL (no HTTP request needed for known patterns)
     const detectStoreName = (url) => {
       if (url.includes("amazon")) return "amazon";
       if (url.includes("bigbang.si")) return "bigbang";
       if (url.includes("mimovrste.com")) return "mimovrste";
-      return "shopify"; // default - scraper auto-detects anyway
+      return "shopify";
     };
     const storeName = detectStoreName(store_url);
 
     const result = db.prepare(
-      `INSERT INTO keyword_watches (keyword, store_url, store_name, search_url, notify_new_products, notify_in_stock, auto_add_tracking, check_interval_minutes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO keyword_watches (keyword, store_url, store_name, search_url, notify_new_products, notify_in_stock, auto_add_tracking, check_interval_minutes, min_price, max_price)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(keyword, store_url, storeName, search_url || null,
       notify_new_products !== false ? 1 : 0,
       notify_in_stock !== false ? 1 : 0,
       auto_add_tracking ? 1 : 0,
-      parseInt(check_interval_minutes) || 0);
+      parseInt(check_interval_minutes) || 0,
+      min_price ? parseFloat(min_price) : null,
+      max_price ? parseFloat(max_price) : null);
     const watch = db.prepare("SELECT * FROM keyword_watches WHERE id = ?").get(result.lastInsertRowid);
 
     // Respond immediately, then run the first check in background
@@ -372,7 +374,7 @@ app.post("/api/keyword-watches", async (req, res) => {
 
 app.put("/api/keyword-watches/:id", async (req, res) => {
   try {
-    const { keyword, store_url, search_url, notify_new_products, notify_in_stock, auto_add_tracking, check_interval_minutes } = req.body;
+    const { keyword, store_url, search_url, notify_new_products, notify_in_stock, auto_add_tracking, check_interval_minutes, min_price, max_price } = req.body;
     const detectStoreName = (url) => {
       if (url.includes("amazon")) return "amazon";
       if (url.includes("bigbang.si")) return "bigbang";
@@ -381,10 +383,12 @@ app.put("/api/keyword-watches/:id", async (req, res) => {
     };
     const storeName = detectStoreName(store_url);
     db.prepare(
-      `UPDATE keyword_watches SET keyword=?, store_url=?, store_name=?, search_url=?, notify_new_products=?, notify_in_stock=?, auto_add_tracking=?, check_interval_minutes=?, updated_at=datetime('now') WHERE id=?`
+      `UPDATE keyword_watches SET keyword=?, store_url=?, store_name=?, search_url=?, notify_new_products=?, notify_in_stock=?, auto_add_tracking=?, check_interval_minutes=?, min_price=?, max_price=?, updated_at=datetime('now') WHERE id=?`
     ).run(keyword, store_url, storeName, search_url || null,
       notify_new_products ? 1 : 0, notify_in_stock ? 1 : 0, auto_add_tracking ? 1 : 0,
       parseInt(check_interval_minutes) || 0,
+      min_price ? parseFloat(min_price) : null,
+      max_price ? parseFloat(max_price) : null,
       req.params.id);
     res.json({ ok: true });
     // Re-run check after edit (in background)
