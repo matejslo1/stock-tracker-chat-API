@@ -146,6 +146,45 @@ class GenericScraper {
       const pathParts = urlObj.pathname.split('/').filter(Boolean);
       // Support both /products/handle and /collections/xxx/products/handle
       const productsIdx = pathParts.indexOf('products');
+      
+      // If URL is a /collections/handle page (not a product page), try to find
+      // the product handle from the collections JSON API
+      const collectionsIdx = pathParts.indexOf('collections');
+      if (collectionsIdx !== -1 && productsIdx === -1 && pathParts[collectionsIdx + 1]) {
+        const collectionHandle = pathParts[collectionsIdx + 1].split('?')[0];
+        console.log(`  ℹ️  Collections URL detected, trying to find product from collection: ${collectionHandle}`);
+        // Try to get first product from collection
+        try {
+          const colUrl = `${urlObj.origin}/collections/${collectionHandle}/products.json?limit=1`;
+          const colRes = await http.get(colUrl, {
+            headers: { 'User-Agent': this.getRandomUA(), 'Accept': 'application/json' },
+            timeout: 8000, validateStatus: () => true,
+          });
+          if (colRes.status === 200 && colRes.data?.products?.length) {
+            const firstProduct = colRes.data.products[0];
+            const handle = firstProduct.handle;
+            console.log(`  ➡️  Redirecting to product: ${handle}`);
+            const productJsonUrl = `${urlObj.origin}/products/${handle}.js`;
+            const jsonRes2 = await http.get(productJsonUrl, {
+              headers: { 'User-Agent': this.getRandomUA(), 'Accept': 'application/json', 'Referer': url },
+              timeout: 10000, validateStatus: () => true,
+            });
+            if (jsonRes2.status === 200 && jsonRes2.data?.variants) {
+              const variants = jsonRes2.data.variants;
+              result.inStock = variants.some(v => v.available);
+              const active = variants.find(v => v.available) || variants[0];
+              if (active) {
+                const rawPrice = parseFloat(active.price);
+                result.price = rawPrice > 500 ? rawPrice / 100 : rawPrice;
+                result.variantId = String(active.id);
+              }
+              console.log(`  📦 Collection->product.js: inStock=${result.inStock}, price=${result.price}`);
+              return result;
+            }
+          }
+        } catch(e) { console.log(`  ⚠️  Collection redirect failed: ${e.message}`); }
+      }
+      
       if (productsIdx !== -1 && pathParts[productsIdx + 1]) {
         const handle = pathParts[productsIdx + 1].split('?')[0];
         const productJsonUrl = `${urlObj.origin}/products/${handle}.js`;

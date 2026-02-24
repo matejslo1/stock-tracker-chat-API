@@ -204,7 +204,18 @@ const ProductModal = ({ product, stores, onSave, onClose, appSettings }) => {
         name: data.detected_name || f.name || (() => { try { return new URL(form.url).pathname.split("/").filter(Boolean).pop()?.replace(/-/g," ") || ""; } catch(e) { return ""; } })() || "Product",
         target_price: f.target_price || (data.detected_price ? data.detected_price.toString() : ""),
       }));
-      setAnalyzeResult({ price: data.detected_price, inStock: data.detected_in_stock, store: data.detected_store, image: data.detected_image });
+      setAnalyzeResult({ 
+        price: data.detected_price, 
+        inStock: data.detected_in_stock, 
+        store: data.detected_store, 
+        image: data.detected_image,
+        isCollectionsUrl: data.is_collections_url,
+        canonicalUrl: data.canonical_url,
+      });
+      // Auto-switch to product URL if collections URL was detected
+      if (data.canonical_url) {
+        setForm(f => ({ ...f, url: data.canonical_url }));
+      }
     } catch (e) { /* ignore */ }
     setAnalyzing(false);
   };
@@ -244,11 +255,19 @@ const ProductModal = ({ product, stores, onSave, onClose, appSettings }) => {
           </div>
           {/* Analyze result preview */}
           {analyzeResult && (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm space-y-1">
-              <div className="font-semibold text-emerald-800">✅ Zaznano:</div>
-              <div className="text-emerald-700">🏪 Platforma: <strong>{analyzeResult.store}</strong></div>
-              {analyzeResult.price && <div className="text-emerald-700">💰 Cena: <strong>{analyzeResult.price?.toFixed(2)} EUR</strong></div>}
-              {analyzeResult.inStock !== null && <div className="text-emerald-700">📦 Zaloga: <strong>{analyzeResult.inStock ? "✅ Na zalogi" : "❌ Ni na zalogi"}</strong></div>}
+            <div className={cn("p-3 rounded-xl text-sm space-y-1 border", analyzeResult.isCollectionsUrl ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200")}>
+              {analyzeResult.isCollectionsUrl && (
+                <div className="font-semibold text-amber-800 mb-2">⚠️ Vnesli ste URL kolekcije, ne posamičnega izdelka!</div>
+              )}
+              {!analyzeResult.isCollectionsUrl && <div className="font-semibold text-emerald-800">✅ Zaznano:</div>}
+              <div className={analyzeResult.isCollectionsUrl ? "text-amber-700" : "text-emerald-700"}>🏪 Platforma: <strong>{analyzeResult.store}</strong></div>
+              {analyzeResult.price && <div className={analyzeResult.isCollectionsUrl ? "text-amber-700" : "text-emerald-700"}>💰 Cena: <strong>{analyzeResult.price?.toFixed(2)} EUR</strong></div>}
+              {analyzeResult.inStock !== null && <div className={analyzeResult.isCollectionsUrl ? "text-amber-700" : "text-emerald-700"}>📦 Zaloga: <strong>{analyzeResult.inStock ? "✅ Na zalogi" : "❌ Ni na zalogi"}</strong></div>}
+              {analyzeResult.canonicalUrl && (
+                <div className="mt-2 pt-2 border-t border-amber-200 text-amber-800 text-xs">
+                  ✅ URL je bil samodejno posodobljen na: <code className="bg-amber-100 px-1 rounded">{analyzeResult.canonicalUrl}</code>
+                </div>
+              )}
             </div>
           )}
           {/* Name */}

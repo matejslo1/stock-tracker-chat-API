@@ -290,12 +290,42 @@ app.post("/api/analyze-url", async (req, res) => {
 
     if (result && result.isShopify) detectedStore = "shopify";
 
+    // Detect if URL is a collections page and suggest canonical product URL
+    let canonicalUrl = url;
+    let isCollectionsUrl = false;
+    try {
+      const u = new URL(url);
+      const parts = u.pathname.split('/').filter(Boolean);
+      const colIdx = parts.indexOf('collections');
+      const prodIdx = parts.indexOf('products');
+      if (colIdx !== -1 && prodIdx === -1) {
+        isCollectionsUrl = true;
+        // Try to get first product URL from this collection
+        const colHandle = parts[colIdx + 1]?.split('?')[0];
+        if (colHandle) {
+          try {
+            const colApiUrl = `${u.origin}/collections/${colHandle}/products.json?limit=1`;
+            const http = require('./utils/http');
+            const colRes = await http.get(colApiUrl, {
+              headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
+              timeout: 6000, validateStatus: () => true,
+            });
+            if (colRes.status === 200 && colRes.data?.products?.[0]) {
+              canonicalUrl = `${u.origin}/products/${colRes.data.products[0].handle}`;
+            }
+          } catch(e) {}
+        }
+      }
+    } catch(e) {}
+
     res.json({
       detected_store: detectedStore,
       detected_name: result?.name || null,
       detected_price: result?.price || null,
       detected_in_stock: result?.inStock ?? null,
       detected_image: result?.imageUrl || null,
+      is_collections_url: isCollectionsUrl,
+      canonical_url: canonicalUrl !== url ? canonicalUrl : null,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
