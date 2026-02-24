@@ -87,8 +87,17 @@ app.get("/api/products", (req, res) => {
 
 app.post("/api/products", async (req, res) => {
   try {
-    const { name, url, store, target_price, auto_purchase, notify_on_stock, notify_on_price_drop, check_interval_minutes, max_order_qty } = req.body;
+    const { name, store, target_price, auto_purchase, notify_on_stock, notify_on_price_drop, check_interval_minutes, max_order_qty } = req.body;
+    let { url } = req.body;
     if (!name || !url) return res.status(400).json({ error: "name and url required" });
+    // Strip Shopify tracking params from URL before saving
+    try {
+      const u = new URL(url);
+      ['_pos','_sid','_ss','_ga','_gl','ref','fbclid','gclid','utm_source','utm_medium','utm_campaign'].forEach(p => u.searchParams.delete(p));
+      if (u.searchParams.toString() === '') u.search = '';
+      u.hash = '';
+      url = u.toString();
+    } catch(e) {}
     const result = db.prepare(
       `INSERT INTO products (name, url, store, target_price, auto_purchase, notify_on_stock, notify_on_price_drop, check_interval_minutes, max_order_qty)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -506,6 +515,25 @@ const PORT = process.env.PORT || 3000;
 async function start() {
 
   await initDatabase();
+
+  // Migration: clean tracking params from existing product URLs
+  try {
+    const allProds = db.prepare('SELECT id, url FROM products').all();
+    const trackingParams = ['_pos','_sid','_ss','_ga','_gl','ref','fbclid','gclid','utm_source','utm_medium','utm_campaign'];
+    for (const p of allProds) {
+      try {
+        const u = new URL(p.url);
+        let changed = false;
+        trackingParams.forEach(param => { if (u.searchParams.has(param)) { u.searchParams.delete(param); changed = true; } });
+        if (u.hash) { u.hash = ''; changed = true; }
+        if (u.searchParams.toString() === '') { u.search = ''; }
+        if (changed) {
+          db.prepare('UPDATE products SET url = ? WHERE id = ?').run(u.toString(), p.id);
+          console.log(`🧹 Cleaned URL for product ${p.id}: ${u.toString()}`);
+        }
+      } catch(e) {}
+    }
+  } catch(e) { console.log('URL cleanup skipped:', e.message); }
 
   // Start cron jobs
   rescheduleGlobalCheck();

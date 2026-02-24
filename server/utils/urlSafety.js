@@ -108,8 +108,12 @@ async function validateAndNormalizeUrl(input, opts = {}) {
     if (isPrivate) throw new Error('Hostname resolves to a private IP');
   }
 
-  // Normalize
+  // Normalize: remove hash and Shopify tracking params
   u.hash = '';
+  const shopifyTrackingParams = ['_pos', '_sid', '_ss', '_ga', '_gl', 'ref', 'fbclid', 'gclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
+  shopifyTrackingParams.forEach(p => u.searchParams.delete(p));
+  // If no meaningful query params remain, remove the query string entirely
+  if (u.searchParams.toString() === '') u.search = '';
   return u.toString();
 }
 

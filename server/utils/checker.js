@@ -89,6 +89,10 @@ await Promise.all(products.map(product => limit(async () => {
     await new Promise(resolve => setTimeout(resolve, delay));
   } catch (error) {
     console.error(`❌ Error checking ${product.name}:`, error.message);
+    // Still update last_checked so UI doesn't show "Nikoli" forever
+    try {
+      db.prepare('UPDATE products SET last_checked = datetime("now"), updated_at = datetime("now") WHERE id = ?').run(product.id);
+    } catch(e) {}
   }
 })));
 
