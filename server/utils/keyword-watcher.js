@@ -64,15 +64,28 @@ class KeywordWatcher {
         timeout: 10000, validateStatus: () => true,
       });
       if (res.status === 200 && res.data?.resources?.results?.products?.length) {
+        const seenUrls = new Map(); // url -> index in products
         for (const p of res.data.resources.results.products) {
           const fullUrl = `${baseUrl}${p.url.split('?')[0]}`;
           const anyAvailable = p.variants?.some(v => v.available);
-          products.push({
-            name: p.title, url: fullUrl,
-            price: p.price ? parseFloat(p.price) / 100 : null,
-            inStock: anyAvailable ?? undefined,
-            image: p.image || '',
-          });
+          // Shopify suggest returns price in cents as integer string
+          const price = p.price ? parseFloat(p.price) / 100 : null;
+          if (seenUrls.has(fullUrl)) {
+            // Keep highest price (main product price, not cheapest variant)
+            const idx = seenUrls.get(fullUrl);
+            if (price !== null && price > (products[idx].price || 0)) {
+              products[idx].price = price;
+            }
+            if (anyAvailable) products[idx].inStock = true;
+          } else {
+            seenUrls.set(fullUrl, products.length);
+            products.push({
+              name: p.title, url: fullUrl,
+              price,
+              inStock: anyAvailable ?? undefined,
+              image: p.image || '',
+            });
+          }
         }
         console.log(`  [1] ✅ ${products.length} products`);
       } else {
@@ -278,25 +291,41 @@ class KeywordWatcher {
     const isShopify = storeName === 'shopify';
     const seen = new Set();
     const allProducts = [];
-    const merge = (list) => { for (const p of list) { if (!seen.has(p.url)) { seen.add(p.url); allProducts.push(p); } } };
+    // merge: first source wins for new URLs, BUT later sources can UPDATE price/stock if they have better data
+    const merge = (list, { overwritePrice = false } = {}) => {
+      for (const p of list) {
+        if (!seen.has(p.url)) {
+          seen.add(p.url);
+          allProducts.push(p);
+        } else if (overwritePrice) {
+          // Update existing entry with better price/stock data
+          const existing = allProducts.find(e => e.url === p.url);
+          if (existing) {
+            if (p.price !== null && p.price !== undefined) existing.price = p.price;
+            if (p.inStock !== undefined) existing.inStock = p.inStock;
+            if (p.name && p.name.length > 0) existing.name = p.name;
+          }
+        }
+      }
+    };
 
     if (isShopify && baseUrl) {
       // 1. suggest.json (fast, up to 250 results)
+      // 1. suggest.json first (fast discovery, but prices may be inaccurate - lowest variant in cents)
       merge(await this.fetchShopifySuggest(baseUrl, keyword));
       console.log(`  After [1]: ${allProducts.length}`);
 
-      // 2. /collections/all scan — ALWAYS run, not just fallback
-      // suggest.json is capped and misses products; this ensures full coverage
-      merge(await this.fetchShopifyAllProducts(baseUrl, keyword));
+      // 2. /collections/all — authoritative prices, overwrites suggest.json prices
+      merge(await this.fetchShopifyAllProducts(baseUrl, keyword), { overwritePrice: true });
       console.log(`  After [2]: ${allProducts.length}`);
 
-      // 3. Scrape /collections HTML for matching collection handles
-      merge(await this.fetchCollectionsByKeyword(baseUrl, keyword));
+      // 3. Collections by keyword — also authoritative, overwrites
+      merge(await this.fetchCollectionsByKeyword(baseUrl, keyword), { overwritePrice: true });
       console.log(`  After [3]: ${allProducts.length}`);
     }
 
     // 4. HTML search page — always run to supplement API results
-    merge(await this.scrapeSearchHtml(searchUrl, keyword));
+    merge(await this.scrapeSearchHtml(searchUrl, keyword), { overwritePrice: true });
     console.log(`  After [4]: ${allProducts.length}`);
 
     console.log(`  📊 TOTAL: ${allProducts.length} products for "${keyword}"`);
