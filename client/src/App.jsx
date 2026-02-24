@@ -814,7 +814,7 @@ export default function StockTracker() {
   useEffect(() => {
     fetchData();
     fetchTelegramSettings();
-    const interval = setInterval(fetchData, 30000);
+    const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
   }, [fetchData, fetchTelegramSettings]);
 
@@ -868,7 +868,23 @@ export default function StockTracker() {
     setCheckingId("all");
     await apiFetch(`${API}/check`, { method: "POST" });
     showToast("Preverjam vse izdelke...", "info");
-    setTimeout(() => { fetchData(); setCheckingId(null); }, 20000);
+    const poll = setInterval(async () => {
+      try {
+        const res = await apiFetch(`${API}/status`);
+        const data = await res.json();
+        if (!data.isChecking) {
+          clearInterval(poll);
+          await fetchData();
+          setCheckingId(null);
+          showToast("Preverjanje končano!", "success");
+        }
+      } catch(e) {
+        clearInterval(poll);
+        await fetchData();
+        setCheckingId(null);
+      }
+    }, 2000);
+    setTimeout(() => { clearInterval(poll); fetchData(); setCheckingId(null); }, 120000);
   };
 
   const handleTestTelegram = async () => {
