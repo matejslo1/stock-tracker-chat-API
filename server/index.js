@@ -190,19 +190,31 @@ app.get("/api/app-settings", (req, res) => {
 
 app.post("/api/app-settings", (req, res) => {
   try {
-    const allowed = ['check_interval_minutes', 'auto_purchase_enabled'];
+    const allowed = ['check_interval_minutes', 'auto_purchase_enabled', 'quiet_hours', 'daily_report'];
     for (const key of allowed) {
       if (req.body[key] !== undefined) {
-        db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)").run(key, String(req.body[key]));
+        const val = typeof req.body[key] === 'object' ? JSON.stringify(req.body[key]) : String(req.body[key]);
+        db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)").run(key, val);
       }
     }
-    
-    // Apply new interval immediately (if changed)
     if (req.body.check_interval_minutes !== undefined) {
       rescheduleGlobalCheck();
     }
-res.json({ ok: true });
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Telegram pause/resume/status
+app.post("/api/telegram/pause", (req, res) => {
+  telegram._paused = true;
+  res.json({ ok: true, paused: true });
+});
+app.post("/api/telegram/resume", (req, res) => {
+  telegram._paused = false;
+  res.json({ ok: true, paused: false });
+});
+app.get("/api/telegram/status", (req, res) => {
+  res.json({ connected: telegram.isReady(), paused: telegram.isPaused(), chatId: telegram.getChatId() });
 });
 
 // Status

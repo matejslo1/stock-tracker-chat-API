@@ -329,15 +329,7 @@ class KeywordWatcher {
 
     // Notify new products
     if (newProducts.length > 0 && watch.notify_new_products) {
-      let message = `🔍 *NOVI IZDELKI: "${watch.keyword}"*\n🏪 ${watch.store_url}\n\n`;
-      newProducts.forEach((p, i) => {
-        message += `${i + 1}. *${p.name}*\n`;
-        if (p.price) message += `   💰 ${p.price.toFixed(2)} EUR\n`;
-        if (p.inStock !== undefined) message += `   ${p.inStock ? '✅ Na zalogi' : '❌ Ni na zalogi'}\n`;
-        message += `   🔗 [Odpri](${p.url})\n\n`;
-      });
-      message += `Skupaj: ${foundProducts.length} izdelkov`;
-      await telegram.sendMessage(message);
+      await telegram.sendKeywordAlert(watch, newProducts);
 
       // Auto-add to tracking
       if (watch.auto_add_tracking) {
@@ -378,13 +370,7 @@ class KeywordWatcher {
     if (watch.notify_in_stock) {
       const backInStock = foundProducts.filter(p => p.inStock === true && knownStockMap[p.url] === false);
       if (backInStock.length > 0) {
-        let msg = `🚨 *NA ZALOGI: "${watch.keyword}"*\n🏪 ${watch.store_url}\n\n`;
-        backInStock.forEach((p, i) => {
-          msg += `${i + 1}. ✅ *${p.name}*\n`;
-          if (p.price) msg += `   💰 ${p.price.toFixed(2)} EUR\n`;
-          msg += `   🔗 [Kupi!](${p.url})\n\n`;
-        });
-        await telegram.sendMessage(msg);
+        await telegram.sendKeywordAlert(watch, null, backInStock);
       }
     }
 

@@ -527,6 +527,96 @@ const SettingsTab = ({ telegramSettings, telegramForm, setTelegramForm, savingTe
         </div>
       </div>
 
+      {/* Telegram Advanced Settings */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6">
+        <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><Bell size={18} /> Napredne nastavitve obvestil</h3>
+        <div className="space-y-5">
+
+          {/* Pause/Resume */}
+          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+            <div>
+              <p className="text-sm font-semibold text-gray-800">Obvestila</p>
+              <p className="text-xs text-gray-500 mt-0.5">Začasno zaustavi vse Telegram obvestile</p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => apiFetch('/api/telegram/pause', { method: 'POST' }).then(() => showToast('Obvestila pavzirana', 'info'))}
+                className="px-4 py-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-800 text-sm font-semibold rounded-xl transition-colors">
+                ⏸ Pavziraj
+              </button>
+              <button onClick={() => apiFetch('/api/telegram/resume', { method: 'POST' }).then(() => showToast('Obvestila aktivna', 'success'))}
+                className="px-4 py-2 bg-green-100 hover:bg-green-200 text-green-800 text-sm font-semibold rounded-xl transition-colors">
+                ▶️ Nadaljuj
+              </button>
+            </div>
+          </div>
+
+          {/* Quiet Hours */}
+          <div className="p-4 bg-gray-50 rounded-xl space-y-3">
+            <div className="flex items-center gap-2">
+              <input type="checkbox"
+                checked={(() => { try { return JSON.parse(appSettings.quiet_hours || '{}').enabled || false; } catch(e) { return false; } })()}
+                onChange={e => {
+                  const current = (() => { try { return JSON.parse(appSettings.quiet_hours || '{}'); } catch(e) { return {}; } })();
+                  onSettingsChange({ quiet_hours: JSON.stringify({ ...current, enabled: e.target.checked }) });
+                }}
+                className="w-4 h-4 rounded" />
+              <p className="text-sm font-semibold text-gray-800">Tihe ure — brez obvestil v tem obdobju</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Od</label>
+                <input type="time"
+                  value={(() => { try { return JSON.parse(appSettings.quiet_hours || '{}').from || '23:00'; } catch(e) { return '23:00'; } })()}
+                  onChange={e => {
+                    const current = (() => { try { return JSON.parse(appSettings.quiet_hours || '{}'); } catch(e) { return {}; } })();
+                    onSettingsChange({ quiet_hours: JSON.stringify({ ...current, from: e.target.value }) });
+                  }}
+                  className="px-3 py-2 rounded-xl border border-gray-200 text-sm" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Do</label>
+                <input type="time"
+                  value={(() => { try { return JSON.parse(appSettings.quiet_hours || '{}').to || '07:00'; } catch(e) { return '07:00'; } })()}
+                  onChange={e => {
+                    const current = (() => { try { return JSON.parse(appSettings.quiet_hours || '{}'); } catch(e) { return {}; } })();
+                    onSettingsChange({ quiet_hours: JSON.stringify({ ...current, to: e.target.value }) });
+                  }}
+                  className="px-3 py-2 rounded-xl border border-gray-200 text-sm" />
+              </div>
+            </div>
+          </div>
+
+          {/* Daily Report */}
+          <div className="p-4 bg-gray-50 rounded-xl space-y-3">
+            <div className="flex items-center gap-2">
+              <input type="checkbox"
+                checked={(() => { try { return JSON.parse(appSettings.daily_report || '{}').enabled || false; } catch(e) { return false; } })()}
+                onChange={e => {
+                  const current = (() => { try { return JSON.parse(appSettings.daily_report || '{}'); } catch(e) { return {}; } })();
+                  onSettingsChange({ daily_report: JSON.stringify({ ...current, enabled: e.target.checked }) });
+                }}
+                className="w-4 h-4 rounded" />
+              <p className="text-sm font-semibold text-gray-800">Dnevno poročilo — pošlji vsak dan ob določeni uri</p>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Ura pošiljanja</label>
+              <input type="time"
+                value={(() => { try { return JSON.parse(appSettings.daily_report || '{}').time || '08:00'; } catch(e) { return '08:00'; } })()}
+                onChange={e => {
+                  const current = (() => { try { return JSON.parse(appSettings.daily_report || '{}'); } catch(e) { return {}; } })();
+                  onSettingsChange({ daily_report: JSON.stringify({ ...current, time: e.target.value }) });
+                }}
+                className="px-3 py-2 rounded-xl border border-gray-200 text-sm" />
+            </div>
+            <button onClick={() => apiFetch('/api/telegram/test', { method: 'POST' }).then(r => r.json()).then(d => showToast(d.success ? 'Test poslan!' : 'Ni povezave', d.success ? 'success' : 'error'))}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-800 text-sm font-semibold rounded-xl transition-colors">
+              <Send size={14} /> Pošlji dnevno poročilo zdaj
+            </button>
+          </div>
+
+        </div>
+      </div>
+
       {/* General Settings */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6">
         <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><Settings size={18} /> Splošne nastavitve</h3>
@@ -1213,7 +1303,12 @@ export default function StockTracker() {
             onStoresUpdate={fetchData}
             showToast={showToast}
             appSettings={appSettings}
-            onSettingsChange={newSettings => setAppSettings(prev => ({ ...prev, ...newSettings }))}
+            onSettingsChange={async newSettings => {
+              setAppSettings(prev => ({ ...prev, ...newSettings }));
+              try {
+                await apiFetch('/api/app-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings) });
+              } catch(e) { console.error('Failed to save settings:', e); }
+            }}
           />
         )}
       </div>
