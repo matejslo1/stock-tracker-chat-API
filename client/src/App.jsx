@@ -834,6 +834,10 @@ export default function StockTracker() {
       showToast("Izdelek dodan za sledenje!", "success");
       setShowModal(false);
       fetchData();
+      // Poll aggressively for the first 15 seconds to catch the initial stock check result
+      setTimeout(fetchData, 3000);
+      setTimeout(fetchData, 7000);
+      setTimeout(fetchData, 15000);
     } catch (e) { showToast(e.message, "error"); }
   };
 
@@ -897,7 +901,11 @@ export default function StockTracker() {
       if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
       showToast("Iskanje dodano! Prvo preverjanje teče ...", "success");
       setShowKeywordModal(false);
+      fetchData();
+      // Poll aggressively to catch the initial search result
       setTimeout(fetchData, 3000);
+      setTimeout(fetchData, 8000);
+      setTimeout(fetchData, 15000);
     } catch (e) { showToast(e.message, "error"); }
   };
 

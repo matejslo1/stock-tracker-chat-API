@@ -29,14 +29,29 @@ class StockChecker {
     }
   }
 
+  // Dedicated method for checking a single product immediately (e.g., after adding)
+  // This does NOT use the isChecking lock so it always runs
+  async checkSingleProduct(productId) {
+    const product = db.prepare('SELECT * FROM products WHERE id = ?').get(productId);
+    if (!product) return;
+    console.log(`⚡ Immediate check for product: ${product.name}`);
+    try {
+      await this.checkProduct(product, { forceNotify: false });
+      console.log(`✅ Immediate check complete for: ${product.name}`);
+    } catch(e) {
+      console.error(`❌ Immediate check failed for ${product.name}:`, e.message);
+      // Still update last_checked so UI doesn't show "Nikoli" forever
+      try {
+        db.prepare('UPDATE products SET last_checked = datetime("now"), updated_at = datetime("now") WHERE id = ?').run(product.id);
+      } catch(e2) {}
+    }
+  }
+
   async checkAll(forceProductId = null, { force = false } = {}) {
     if (this.isChecking) {
       if (forceProductId) {
-        const product = db.prepare('SELECT * FROM products WHERE id = ?').get(forceProductId);
-        if (product) {
-          console.log(`⚡ Force-checking newly added product: ${product.name}`);
-          try { await this.checkProduct(product, { forceNotify: false }); } catch(e) { console.error(e.message); }
-        }
+        // Use the dedicated single-product checker (doesn't need the lock)
+        await this.checkSingleProduct(forceProductId);
       } else {
         console.log('⏳ Check already in progress, skipping...');
       }

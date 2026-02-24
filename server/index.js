@@ -106,8 +106,8 @@ app.post("/api/products", async (req, res) => {
       notify_on_price_drop ? 1 : 0, check_interval_minutes || 0,
       max_order_qty || 1);
     const product = db.prepare("SELECT * FROM products WHERE id = ?").get(result.lastInsertRowid);
-    // Kick off a quick check in the background
-    setTimeout(() => checker.checkAll(result.lastInsertRowid), 500);
+    // Kick off an immediate check in the background using dedicated single-product checker
+    checker.checkSingleProduct(result.lastInsertRowid).catch(e => console.error('Initial check failed:', e.message));
     res.json(product);
   } catch (e) {
     if (e.message && e.message.includes("UNIQUE")) return res.status(400).json({ error: "URL already tracked" });
@@ -266,7 +266,7 @@ app.post("/api/check", async (req, res) => {
 
 app.post("/api/check/:id", async (req, res) => {
   res.json({ ok: true });
-  checker.checkAll(parseInt(req.params.id));
+  checker.checkSingleProduct(parseInt(req.params.id));
 });
 
 // Analyze URL (scrape without saving)
@@ -405,9 +405,9 @@ app.post("/api/keyword-watches", async (req, res) => {
       max_price ? parseFloat(max_price) : null);
     const watch = db.prepare("SELECT * FROM keyword_watches WHERE id = ?").get(result.lastInsertRowid);
 
-    // Respond immediately, then run the first check in background
+    // Respond immediately, then run the first check in background (no delay)
     res.json(watch);
-    setTimeout(() => keywordWatcher.checkWatch(watch), 500);
+    keywordWatcher.checkWatch(watch).catch(e => console.error('Initial keyword check failed:', e.message));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -581,8 +581,8 @@ async function start() {
   // Cron: check stocks on interval (read from DB, fallback to env)
   const intervalRow = db.prepare("SELECT value FROM app_settings WHERE key = 'check_interval_minutes'").get();
 
-  // Cron: keyword watches (every 10 min)
-  cron.schedule("*/10 * * * *", () => keywordWatcher.checkAll());
+  // Cron: keyword watches — check every minute, individual intervals are respected inside checkAll()
+  cron.schedule("* * * * *", () => keywordWatcher.checkAll());
 
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
