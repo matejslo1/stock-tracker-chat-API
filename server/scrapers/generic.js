@@ -83,8 +83,10 @@ class GenericScraper {
         shopifyResult = await this.extractShopifyData($, html, url);
         console.log(`  🛍️  Shopify extra: inStock=${shopifyResult.inStock}, price=${shopifyResult.price}, variantId=${shopifyResult.variantId}`);
 
-        // If product.js gave us a definitive answer, return early (no need for slower methods)
-        if (shopifyResult.inStock !== null && shopifyResult.variantId) {
+        // If product.js says IN STOCK, trust it and return early.
+        // If it says OUT OF STOCK, still check JSON-LD and HTML selectors as fallback
+        // (Shopify sometimes returns available:false when inventory_policy='continue')
+        if (shopifyResult.inStock === true && shopifyResult.variantId) {
           const jsonLdResult = this.extractFromJsonLd($, html);
           return {
             inStock: shopifyResult.inStock,
@@ -106,9 +108,13 @@ class GenericScraper {
       const selectorResult = this.extractData($, storeConfig, url);
       console.log(`  🎯 Selectors: inStock=${selectorResult.inStock}, rawText="${selectorResult.rawStockText}"`);
 
-      // Merge priority: Shopify product.js API > JSON-LD > CSS selectors > false
+      // Merge priority: if ANY method says IN STOCK -> in stock
+      // product.js false can be wrong (inventory_policy:continue), so HTML/JSON-LD can override
       const finalInStock =
-        shopifyResult.inStock !== null ? shopifyResult.inStock :
+        shopifyResult.inStock === true ? true :          // product.js says yes -> trust it
+        jsonLdResult.inStock === true ? true :            // JSON-LD says yes -> trust it  
+        selectorResult.inStock === true ? true :          // HTML selector says yes -> trust it
+        shopifyResult.inStock === false && jsonLdResult.inStock === null && selectorResult.inStock === null ? false : // only product.js voted, said no
         jsonLdResult.inStock !== null ? jsonLdResult.inStock :
         selectorResult.inStock !== null ? selectorResult.inStock :
         false;
@@ -155,18 +161,29 @@ class GenericScraper {
         });
         if (jsonRes.status === 200 && jsonRes.data && jsonRes.data.variants) {
           const variants = jsonRes.data.variants;
-          const anyAvailable = variants.some(v => v.available);
+          // Check variant availability — also consider top-level product.available
+          const anyAvailable = variants.some(v => v.available) || jsonRes.data.available === true;
           result.inStock = anyAvailable;
+          
+          // Log each variant for debugging
+          variants.forEach((v, i) => {
+            console.log(`    variant[${i}]: id=${v.id} available=${v.available} price=${v.price} title=${v.title}`);
+          });
+
           const activeVariant = variants.find(v => v.available) || variants[0];
           if (activeVariant) {
-            if (activeVariant.price) result.price = parseFloat(activeVariant.price) / 100;
+            // Shopify .js returns price as integer cents (e.g. 1350 = 13.50 EUR)
+            // BUT some themes/apps patch it to return decimal string "13.50"
+            // Safe: if value > 500, assume cents
+            const rawPrice = parseFloat(activeVariant.price);
+            result.price = rawPrice > 500 ? rawPrice / 100 : rawPrice;
             result.variantId = String(activeVariant.id);
             result.stockQty = activeVariant.inventory_quantity || 0;
           }
           if (jsonRes.data.images && jsonRes.data.images.length > 0) {
             result.imageUrl = jsonRes.data.images[0];
           }
-          console.log(`  📦 Shopify product.js: ${variants.length} variants, anyAvailable=${anyAvailable}, variantId=${result.variantId}`);
+          console.log(`  📦 Shopify product.js: ${variants.length} variants, anyAvailable=${anyAvailable}, top-level available=${jsonRes.data.available}, variantId=${result.variantId}`);
           return result;
         } else {
           console.log(`  ⚠️  Shopify product.js returned status=${jsonRes.status}`);
