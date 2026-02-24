@@ -263,7 +263,7 @@ app.get("/api/notifications", (req, res) => {
 // Manual check
 app.post("/api/check", async (req, res) => {
   res.json({ ok: true });
-  checker.checkAll();
+  checker.checkAll(null, { force: true });
 });
 
 app.post("/api/check/:id", async (req, res) => {

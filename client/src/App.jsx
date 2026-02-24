@@ -868,7 +868,7 @@ export default function StockTracker() {
     setCheckingId("all");
     await apiFetch(`${API}/check`, { method: "POST" });
     showToast("Preverjam vse izdelke...", "info");
-    setTimeout(() => { fetchData(); setCheckingId(null); }, 10000);
+    setTimeout(() => { fetchData(); setCheckingId(null); }, 20000);
   };
 
   const handleTestTelegram = async () => {
