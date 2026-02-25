@@ -16,7 +16,7 @@
     "express-rate-limit": "^7.5.0",
     "node-cron": "^3.0.3",
     "node-telegram-bot-api": "^0.66.0",
-    "p-limit": "^4.0.0",
+    "p-limit": "^3.1.0",
     "sql.js": "^1.10.2"
   }
 }

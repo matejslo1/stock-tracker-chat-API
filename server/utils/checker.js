@@ -1,6 +1,7 @@
 const db = require('../utils/database');
 const telegram = require('../utils/telegram');
 const scraper = require('../scrapers/generic');
+const pLimit = require('p-limit');
 class StockChecker {
   constructor() {
     this.isChecking = false;
@@ -14,14 +15,14 @@ class StockChecker {
     try {
       db.prepare(
         "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES ('last_check_at', ?, ?)"
-      ).run(String(nowIso));
+      ).run(String(nowIso), String(nowIso));
 
       const row = db.prepare("SELECT value FROM app_settings WHERE key = 'total_checks'").get();
       const prev = parseInt(row?.value || '0', 10);
       const next = Number.isFinite(prev) ? prev + 1 : 1;
       db.prepare(
         "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES ('total_checks', ?, ?)"
-      ).run(String(next));
+      ).run(String(next), String(nowIso));
     } catch (e) {
       console.warn('⚠️  Could not persist global stats:', e.message);
     }
@@ -73,9 +74,6 @@ class StockChecker {
         console.log('📭 All products checked recently, skipping');
         return;
       }
-
-      const { default: pLimit } = await import('p-limit');
-
       const concurrency = Math.max(1, parseInt(process.env.SCRAPE_CONCURRENCY || '3', 10) || 3);
 const limit = pLimit(concurrency);
 
@@ -91,7 +89,7 @@ await Promise.all(products.map(product => limit(async () => {
     console.error(`❌ Error checking ${product.name}:`, error.message);
     // Still update last_checked so UI doesn't show "Nikoli" forever
     try {
-      db.prepare('UPDATE products SET last_checked = datetime("now"), updated_at = datetime("now") WHERE id = ?').run(product.id);
+      db.prepare('UPDATE products SET last_checked = ?, updated_at = ? WHERE id = ?').run(nowIso, nowIso, product.id);
     } catch(e) {}
   }
 })));
@@ -110,13 +108,15 @@ await Promise.all(products.map(product => limit(async () => {
 
   async checkProduct(product, { forceNotify = false } = {}) {
     console.log(`  📦 Checking: ${product.name} (${product.store})`);
+    const nowIso = new Date().toISOString();
+
 
     const result = await scraper.scrape(product);
 
     if (!result) {
       console.log(`  ⚠️  Could not scrape: ${product.name}`);
-      db.prepare('UPDATE products SET last_checked = datetime("now"), updated_at = datetime("now") WHERE id = ?')
-        .run(product.id);
+      db.prepare('UPDATE products SET last_checked = ?, updated_at = ? WHERE id = ?')
+        .run(nowIso, nowIso, product.id);
       return;
     }
 
@@ -166,7 +166,10 @@ await Promise.all(products.map(product => limit(async () => {
       result.imageUrl,
       variantId,
       result.maxOrderQty || null,
+      nowIso,
       isNowInStock ? 1 : 0,
+      nowIso,
+      nowIso,
       product.id
     );
 
