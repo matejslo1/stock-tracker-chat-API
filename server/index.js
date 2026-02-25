@@ -201,7 +201,7 @@ app.get("/api/app-settings", (req, res) => {
 
 app.post("/api/app-settings", (req, res) => {
   try {
-    const allowed = ['check_interval_minutes', 'auto_purchase_enabled', 'quiet_hours', 'daily_report', 'global_max_qty'];
+    const allowed = ['check_interval_minutes', 'auto_purchase_enabled', 'quiet_hours', 'daily_report', 'global_max_qty', 'cart_qty_mode'];
     for (const key of allowed) {
       if (req.body[key] !== undefined) {
         const val = typeof req.body[key] === 'object' ? JSON.stringify(req.body[key]) : String(req.body[key]);
@@ -482,11 +482,14 @@ app.post("/api/cart/build", async (req, res) => {
     const products = db.prepare("SELECT * FROM products WHERE store = 'shopify' AND in_stock = 1").all()
       .filter(p => { try { return new URL(p.url).origin === domain; } catch(e) { return false; } });
     if (products.length === 0) return res.json({ cartUrl: null, message: "Ni izdelkov na zalogi", items: [] });
+    // Load cart quantity mode setting
+    const modeRow = db.prepare("SELECT value FROM app_settings WHERE key = 'cart_qty_mode'").get();
+    const cartQtyMode = modeRow?.value || 'global'; // 'global' | 'per_product' | 'tampermonkey'
     // Load global_max_qty setting
     const globalMaxRow = db.prepare("SELECT value FROM app_settings WHERE key = 'global_max_qty'").get();
     const globalMaxQty = globalMaxRow ? parseInt(globalMaxRow.value) || null : null;
-    const result = await buildCartUrlForProducts(products, globalMaxQty);
-    res.json(result);
+    const result = await buildCartUrlForProducts(products, globalMaxQty, cartQtyMode);
+    res.json({ ...result, cartQtyMode });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

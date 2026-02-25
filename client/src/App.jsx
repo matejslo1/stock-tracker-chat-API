@@ -482,6 +482,7 @@ const SettingsTab = ({ telegramSettings, telegramForm, setTelegramForm, savingTe
   const [intervalVal, setIntervalVal] = useState(String(appSettings?.check_interval_minutes || status?.checkInterval || 5));
   const [autoPurchase, setAutoPurchase] = useState(status?.autoPurchaseEnabled || false);
   const [globalMaxQty, setGlobalMaxQty] = useState(String(appSettings?.global_max_qty || ''));
+  const [cartQtyMode, setCartQtyMode] = useState(appSettings?.cart_qty_mode || 'global');
   const [savingSettings, setSavingSettings] = useState(false);
   const [editingStore, setEditingStore] = useState(null);
   const [storeForm, setStoreForm] = useState({});
@@ -491,10 +492,10 @@ const SettingsTab = ({ telegramSettings, telegramForm, setTelegramForm, savingTe
     try {
       await apiFetch('/api/app-settings', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ check_interval_minutes: parseInt(intervalVal) || 5, auto_purchase_enabled: autoPurchase, global_max_qty: globalMaxQty ? parseInt(globalMaxQty) : null }),
+        body: JSON.stringify({ check_interval_minutes: parseInt(intervalVal) || 5, auto_purchase_enabled: autoPurchase, global_max_qty: globalMaxQty ? parseInt(globalMaxQty) : null, cart_qty_mode: cartQtyMode }),
       });
-      showToast('Nastavitve shranjene! Restart za novo cron vrednost.', 'success');
-      if (onSettingsChange) onSettingsChange({ check_interval_minutes: parseInt(intervalVal) || 5 });
+      showToast('Nastavitve shranjene!', 'success');
+      if (onSettingsChange) onSettingsChange({ check_interval_minutes: parseInt(intervalVal) || 5, cart_qty_mode: cartQtyMode });
     } catch(e) { showToast('Napaka pri shranjevanju', 'error'); }
     setSavingSettings(false);
   };
@@ -681,32 +682,88 @@ const SettingsTab = ({ telegramSettings, telegramForm, setTelegramForm, savingTe
             </div>
           </div>
 
-          {/* Global Max Qty */}
-          <div className="p-4 bg-orange-50 border border-orange-200 rounded-xl space-y-3">
+          {/* Cart Quantity Mode */}
+          <div className="p-4 bg-orange-50 border border-orange-200 rounded-xl space-y-4">
             <div>
-              <p className="text-sm font-semibold text-orange-900 flex items-center gap-2"><ShoppingCart size={15} /> Globalna omejitev količine (košarica)</p>
-              <p className="text-xs text-orange-700 mt-0.5">Velja za vse Shopify izdelke pri gradnji košarice. Posamezna nastavitev izdelka (<em>max_order_qty</em>) ima prednost pred globalno.</p>
+              <p className="text-sm font-semibold text-orange-900 flex items-center gap-2"><ShoppingCart size={15} /> Način omejitve količine (Shopify košarica)</p>
+              <p className="text-xs text-orange-700 mt-0.5">Izberi kako se določi količina izdelkov pri gradnji košarice.</p>
             </div>
-            <div className="flex items-center gap-3">
-              <input
-                type="number" min="1" max="99"
-                value={globalMaxQty}
-                onChange={e => setGlobalMaxQty(e.target.value)}
-                placeholder="npr. 3"
-                className="w-32 px-4 py-2.5 rounded-xl border border-orange-300 focus:border-orange-500 focus:ring-2 focus:ring-orange-100 outline-none text-sm transition-all"
-              />
-              {globalMaxQty && (
-                <button onClick={() => setGlobalMaxQty('')}
-                  className="text-xs text-gray-500 hover:text-red-500 underline transition-colors">
-                  Odstrani omejitev
+
+            {/* Mode selector */}
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { id: 'global', label: '🌐 Global Max', desc: 'Ena omejitev za vse izdelke' },
+                { id: 'per_product', label: '📦 Per-product', desc: 'Vsak izdelek ima svojo omejitev' },
+                { id: 'tampermonkey', label: '🐒 Tampermonkey', desc: 'Skripta prilagodi količino v brskalniku' },
+              ].map(mode => (
+                <button key={mode.id}
+                  onClick={() => setCartQtyMode(mode.id)}
+                  className={cn(
+                    "p-3 rounded-xl border-2 text-left transition-all",
+                    cartQtyMode === mode.id
+                      ? "border-orange-500 bg-white shadow-sm"
+                      : "border-gray-200 bg-white/50 hover:border-orange-300"
+                  )}>
+                  <div className="text-sm font-bold text-gray-800">{mode.label}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">{mode.desc}</div>
                 </button>
-              )}
+              ))}
             </div>
-            <div className="text-xs text-orange-700 space-y-0.5">
-              <p>📦 <strong>Logika:</strong> <code>min(global_max, store_limit, per_product_max)</code></p>
-              <p>• Prazno = brez globalne omejitve (uporabi zaznano omejitev trgovine)</p>
-              <p>• Per-product <em>max_order_qty</em> (nastavi pri posameznem izdelku) ima vedno prednost</p>
-            </div>
+
+            {/* Mode-specific settings */}
+            {cartQtyMode === 'global' && (
+              <div className="p-3 bg-white rounded-xl border border-orange-100 space-y-2">
+                <label className="text-sm font-semibold text-orange-800 block">Globalni max na izdelek</label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number" min="1" max="99"
+                    value={globalMaxQty}
+                    onChange={e => setGlobalMaxQty(e.target.value)}
+                    placeholder="npr. 3"
+                    className="w-32 px-4 py-2.5 rounded-xl border border-orange-300 focus:border-orange-500 focus:ring-2 focus:ring-orange-100 outline-none text-sm transition-all"
+                  />
+                  {globalMaxQty && (
+                    <button onClick={() => setGlobalMaxQty('')}
+                      className="text-xs text-gray-500 hover:text-red-500 underline transition-colors">
+                      Odstrani
+                    </button>
+                  )}
+                </div>
+                <div className="text-xs text-orange-700 space-y-0.5">
+                  <p>📦 <strong>Logika:</strong> <code>min(global_max, store_limit)</code></p>
+                  <p>• Prazno = brez globalne omejitve (uporabi zaznano omejitev trgovine)</p>
+                  <p>• Per-product <em>max_order_qty</em> na izdelku ima še vedno prednost, če je nastavljen</p>
+                </div>
+              </div>
+            )}
+
+            {cartQtyMode === 'per_product' && (
+              <div className="p-3 bg-white rounded-xl border border-orange-100 space-y-2">
+                <div className="text-xs text-orange-700 space-y-1">
+                  <p>📦 Vsak izdelek uporablja svojo <code>max_order_qty</code> vrednost, ki jo nastaviš v urejevalniku izdelka.</p>
+                  <p>• <strong>Logika:</strong> <code>min(per_product_max, store_limit)</code></p>
+                  <p>• Globalna omejitev se <strong>ne uporabi</strong></p>
+                  <p>• Če izdelek nima nastavljene omejitve, se uporabi zaznana omejitev trgovine</p>
+                </div>
+              </div>
+            )}
+
+            {cartQtyMode === 'tampermonkey' && (
+              <div className="p-3 bg-white rounded-xl border border-orange-100 space-y-2">
+                <div className="text-xs text-orange-700 space-y-1">
+                  <p>🐒 Košarica se zgradi z <strong>1x</strong> na izdelek. Tampermonkey skripta na strani trgovine avtomatsko prilagodi količino na dovoljeno mejo.</p>
+                  <p>• Hitrejša gradnja košarice (brez probing-a omejitev)</p>
+                  <p>• Potrebna je nameščena <a href="/tm/tcgstar-limit-loader.js" target="_blank" className="underline font-semibold hover:text-orange-900">Tampermonkey skripta</a></p>
+                  <p>• Skripta prebere "Must have at most X" sporočila in avtomatsko zmanjša količino</p>
+                </div>
+                <div className="flex items-center gap-2 mt-2">
+                  <a href="/tm/tcgstar-limit-loader.js" target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-100 hover:bg-orange-200 text-orange-800 rounded-lg text-xs font-bold transition-colors">
+                    <ExternalLink size={12} /> Odpri Tampermonkey skripto
+                  </a>
+                </div>
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="p-3 bg-gray-50 rounded-xl">
@@ -1160,6 +1217,13 @@ export default function StockTracker() {
                       <span className="font-extrabold text-emerald-800 text-base">{domain.domain.replace('https://', '')}</span>
                       <span className="text-xs bg-emerald-500 text-white px-2.5 py-0.5 rounded-full font-bold">
                         {domain.inStock} na zalogi
+                      </span>
+                      <span className={cn("text-xs px-2 py-0.5 rounded-full font-bold",
+                        appSettings?.cart_qty_mode === 'tampermonkey' ? "bg-yellow-100 text-yellow-800 border border-yellow-300" :
+                        appSettings?.cart_qty_mode === 'per_product' ? "bg-blue-100 text-blue-800 border border-blue-300" :
+                        "bg-orange-100 text-orange-800 border border-orange-300"
+                      )}>
+                        {appSettings?.cart_qty_mode === 'tampermonkey' ? '🐒 TM' : appSettings?.cart_qty_mode === 'per_product' ? '📦 Per-product' : '🌐 Global'}
                       </span>
                     </div>
                     {/* In-stock products with max qty badges */}
