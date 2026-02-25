@@ -749,17 +749,31 @@ const SettingsTab = ({ telegramSettings, telegramForm, setTelegramForm, savingTe
             )}
 
             {cartQtyMode === 'tampermonkey' && (
-              <div className="p-3 bg-white rounded-xl border border-orange-100 space-y-2">
+              <div className="p-3 bg-white rounded-xl border border-orange-100 space-y-3">
                 <div className="text-xs text-orange-700 space-y-1">
                   <p>🐒 Košarica se zgradi z <strong>1x</strong> na izdelek. Tampermonkey skripta na strani trgovine avtomatsko prilagodi količino na dovoljeno mejo.</p>
-                  <p>• Hitrejša gradnja košarice (brez probing-a omejitev)</p>
-                  <p>• Potrebna je nameščena <a href="/tm/tcgstar-limit-loader.js" target="_blank" className="underline font-semibold hover:text-orange-900">Tampermonkey skripta</a></p>
-                  <p>• Skripta prebere "Must have at most X" sporočila in avtomatsko zmanjša količino</p>
+                  <p>• Hitrejša gradnja košarice (brez server-side probing-a omejitev)</p>
+                  <p>• Na cart strani avtomatsko poveča qty na max dovoljeno</p>
+                  <p>• Ob checkout napaki prilagodi in poskusi znova</p>
+                  <p>• Naučene omejitve se shranijo lokalno v brskalniku</p>
                 </div>
-                <div className="flex items-center gap-2 mt-2">
-                  <a href="/tm/tcgstar-limit-loader.js" target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-100 hover:bg-orange-200 text-orange-800 rounded-lg text-xs font-bold transition-colors">
-                    <ExternalLink size={12} /> Odpri Tampermonkey skripto
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg space-y-2">
+                  <p className="text-xs font-bold text-yellow-800">📋 Namestitev:</p>
+                  <ol className="text-xs text-yellow-700 space-y-0.5 list-decimal list-inside">
+                    <li>Namesti <a href="https://www.tampermonkey.net/" target="_blank" rel="noopener noreferrer" className="underline font-semibold">Tampermonkey</a> razširitev za brskalnik</li>
+                    <li>Klikni spodnji gumb — Tampermonkey bo ponudil namestitev</li>
+                    <li>Potrdi namestitev v Tampermonkey dialogu</li>
+                    <li>Po potrebi dodaj <code>@match</code> pravila za dodatne trgovine</li>
+                  </ol>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <a href="/tm/stock-tracker-cart-enforcer.user.js"
+                    className="flex items-center gap-1.5 px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-xl text-xs font-bold transition-colors shadow-sm">
+                    <Zap size={13} /> Namesti Tampermonkey skripto
+                  </a>
+                  <a href="/tm/stock-tracker-cart-enforcer.user.js" target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-colors">
+                    <ExternalLink size={12} /> Preglej kodo
                   </a>
                 </div>
               </div>

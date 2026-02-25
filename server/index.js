@@ -505,7 +505,11 @@ if (fs.existsSync(tmDir)) {
     "/tm",
     express.static(tmDir, {
       setHeaders(res, filePath) {
-        if (filePath.endsWith(".js")) {
+        if (filePath.endsWith(".user.js")) {
+          // Tampermonkey recognizes .user.js and prompts installation
+          res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+          res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        } else if (filePath.endsWith(".js")) {
           res.setHeader("Content-Type", "application/javascript; charset=utf-8");
           res.setHeader("Cache-Control", "public, max-age=300");
         }
