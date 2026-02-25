@@ -1,8 +1,6 @@
 const db = require('../utils/database');
 const telegram = require('../utils/telegram');
 const scraper = require('../scrapers/generic');
-const pLimit = require('p-limit');
-
 class StockChecker {
   constructor() {
     this.isChecking = false;
@@ -75,6 +73,8 @@ class StockChecker {
         console.log('📭 All products checked recently, skipping');
         return;
       }
+
+      const { default: pLimit } = await import('p-limit');
 
       const concurrency = Math.max(1, parseInt(process.env.SCRAPE_CONCURRENCY || '3', 10) || 3);
 const limit = pLimit(concurrency);

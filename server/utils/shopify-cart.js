@@ -279,7 +279,7 @@ async function getShopifyVariant(productUrl) {
 function buildCartUrl(domain, items) {
   if (!items || items.length === 0) return null;
   const cartPart = items.map(i => `${i.variantId}:${i.quantity}`).join(',');
-  return `${domain}/cart/${cartPart}`;
+  return `${domain}/cart/${cartPart}?return_to=/cart`;
 }
 
 /**
