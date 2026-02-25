@@ -1305,17 +1305,30 @@ export default function StockTracker() {
                             className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-bold transition-colors">
                             <Eye size={14} /> Odpri košarico
                           </a>
-                          <a href={cartUrls[domain.domain] + (cartUrls[domain.domain].includes('?') ? '&checkout' : '?checkout')}
-                            target="_blank" rel="noopener noreferrer"
-                            className="flex items-center gap-2 px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-sm font-extrabold transition-colors shadow-md">
-                            <Zap size={14} /> Zaključi nakup →
-                          </a>
+                          {appSettings?.cart_qty_mode === 'tampermonkey' ? (
+                            <a href={(() => { try { return cartUrls[domain.domain]; } catch(e) { return '#'; } })()}
+                              target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-2 px-5 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-xl text-sm font-extrabold transition-colors shadow-md">
+                              <Zap size={14} /> 🐒 Odpri & Optimiziraj →
+                            </a>
+                          ) : (
+                            <a href={cartUrls[domain.domain] + (cartUrls[domain.domain].includes('?') ? '&checkout' : '?checkout')}
+                              target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-2 px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-sm font-extrabold transition-colors shadow-md">
+                              <Zap size={14} /> Zaključi nakup →
+                            </a>
+                          )}
                         </>
                       )}
                     </div>
                     {buildingCart === domain.domain && (
                       <p className="text-xs text-emerald-600 mt-2 flex items-center gap-1">
                         <RefreshCw size={10} className="animate-spin" /> Preverja maksimalne količine...
+                      </p>
+                    )}
+                    {appSettings?.cart_qty_mode === 'tampermonkey' && cartUrls[domain.domain] && (
+                      <p className="text-xs text-yellow-700 mt-2 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-1.5">
+                        🐒 TM mod: košarica se odpre na <strong>/cart</strong> strani. Skripta bo avtomatsko povečala količine na max in potem lahko zaključiš nakup.
                       </p>
                     )}
                   </div>
