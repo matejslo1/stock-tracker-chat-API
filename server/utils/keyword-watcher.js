@@ -433,14 +433,7 @@ class KeywordWatcher {
     const allWatches = db.prepare('SELECT * FROM keyword_watches WHERE active = 1').all();
     if (!allWatches.length) { this.isChecking = false; return; }
 
-    // Read global keyword check interval from DB, fallback to env, then default 10
-    let globalInterval = 10;
-    try {
-      const row = db.prepare("SELECT value FROM app_settings WHERE key = 'check_interval_minutes'").get();
-      const raw = row?.value ?? process.env.KEYWORD_CHECK_INTERVAL_MINUTES ?? '10';
-      const n = parseInt(String(raw), 10);
-      if (Number.isFinite(n) && n >= 1) globalInterval = n;
-    } catch(e) {}
+    const globalInterval = parseInt(process.env.KEYWORD_CHECK_INTERVAL_MINUTES || '10');
     const now = Date.now();
     const watches = allWatches.filter(watch => {
       const interval = watch.check_interval_minutes > 0 ? watch.check_interval_minutes : globalInterval;

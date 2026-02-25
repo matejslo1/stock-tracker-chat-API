@@ -15,43 +15,28 @@ class StockChecker {
   _persistGlobalStats(nowIso) {
     try {
       db.prepare(
-        "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES ('last_check_at', ?, datetime('now'))"
+        "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES ('last_check_at', ?, ?)"
       ).run(String(nowIso));
 
       const row = db.prepare("SELECT value FROM app_settings WHERE key = 'total_checks'").get();
       const prev = parseInt(row?.value || '0', 10);
       const next = Number.isFinite(prev) ? prev + 1 : 1;
       db.prepare(
-        "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES ('total_checks', ?, datetime('now'))"
+        "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES ('total_checks', ?, ?)"
       ).run(String(next));
     } catch (e) {
       console.warn('⚠️  Could not persist global stats:', e.message);
     }
   }
 
-  // Dedicated method for checking a single product immediately (e.g., after adding)
-  // This does NOT use the isChecking lock so it always runs
-  async checkSingleProduct(productId) {
-    const product = db.prepare('SELECT * FROM products WHERE id = ?').get(productId);
-    if (!product) return;
-    console.log(`⚡ Immediate check for product: ${product.name}`);
-    try {
-      await this.checkProduct(product, { forceNotify: false });
-      console.log(`✅ Immediate check complete for: ${product.name}`);
-    } catch(e) {
-      console.error(`❌ Immediate check failed for ${product.name}:`, e.message);
-      // Still update last_checked so UI doesn't show "Nikoli" forever
-      try {
-        db.prepare('UPDATE products SET last_checked = datetime("now"), updated_at = datetime("now") WHERE id = ?').run(product.id);
-      } catch(e2) {}
-    }
-  }
-
   async checkAll(forceProductId = null, { force = false } = {}) {
     if (this.isChecking) {
       if (forceProductId) {
-        // Use the dedicated single-product checker (doesn't need the lock)
-        await this.checkSingleProduct(forceProductId);
+        const product = db.prepare('SELECT * FROM products WHERE id = ?').get(forceProductId);
+        if (product) {
+          console.log(`⚡ Force-checking newly added product: ${product.name}`);
+          try { await this.checkProduct(product, { forceNotify: false }); } catch(e) { console.error(e.message); }
+        }
       } else {
         console.log('⏳ Check already in progress, skipping...');
       }
@@ -62,14 +47,7 @@ class StockChecker {
     console.log(`\n🔍 [${new Date().toLocaleTimeString()}] Starting stock check... (force=${force})`);
 
     try {
-      // Read global interval from DB app_settings (same source as the UI settings page)
-      let globalInterval = 5;
-      try {
-        const row = db.prepare("SELECT value FROM app_settings WHERE key = 'check_interval_minutes'").get();
-        const raw = row?.value ?? process.env.CHECK_INTERVAL_MINUTES ?? '5';
-        const n = parseInt(String(raw), 10);
-        if (Number.isFinite(n) && n >= 1) globalInterval = n;
-      } catch(e) {}
+      const globalInterval = parseInt(process.env.CHECK_INTERVAL_MINUTES || 5);
       const now = Date.now();
       const allProducts = db.prepare('SELECT * FROM products').all();
 
@@ -177,9 +155,9 @@ await Promise.all(products.map(product => limit(async () => {
         image_url = COALESCE(?, image_url),
         shopify_variant_id = COALESCE(?, shopify_variant_id),
         max_order_qty = COALESCE(?, max_order_qty),
-        last_checked = datetime('now'),
-        last_in_stock = CASE WHEN ? = 1 THEN datetime('now') ELSE last_in_stock END,
-        updated_at = datetime('now')
+        last_checked = ?,
+        last_in_stock = CASE WHEN ? = 1 THEN ? ELSE last_in_stock END,
+        updated_at = ?
       WHERE id = ?
     `).run(
       isNowInStock ? 1 : 0,
@@ -248,16 +226,6 @@ await Promise.all(products.map(product => limit(async () => {
       if (product.auto_purchase && process.env.AUTO_PURCHASE_ENABLED === 'true' && product.store !== 'shopify') {
         console.log(`  🤖 Attempting auto-purchase for: ${product.name}`);
         await this.attemptPurchase(product);
-      }
-    }
-
-    // Izdelek je šel iz zaloge
-    if (!isNowInStock && wasInStock) {
-      console.log(`  📭 OUT OF STOCK: ${product.name}`);
-      if (product.notify_on_stock) {
-        await telegram.sendOutOfStockAlert(product);
-        db.prepare('INSERT INTO notifications (product_id, type, message) VALUES (?, ?, ?)')
-          .run(product.id, 'out_of_stock', `Product went out of stock. Last price: ${newPrice || oldPrice || 'N/A'}`);
       }
     }
 

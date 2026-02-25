@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Package, Plus, RefreshCw, Bell, Settings, Trash2, Eye, Edit3, Send, ShoppingCart, TrendingDown, Activity, X, Check, AlertTriangle, ExternalLink, Clock, Zap, ChevronDown, ChevronUp, Search, BarChart3, Key, Save, ShoppingBag, Link } from "lucide-react";
 
 
@@ -17,6 +17,14 @@ const apiFetch = (url, options = {}) => {
 const API = "/api";
 const cn = (...classes) => classes.filter(Boolean).join(" ");
 const timeAgo = (dateStr) => {
+  if (!dateStr) return "Nikoli";
+
+  let s = dateStr.trim();
+
+  // SQLite "YYYY-MM-DD HH:MM:SS" -> ISO
+  if (s.includes(" ") && !s.includes("T")) s = s.replace(" ", "T");
+  if (!(s.endsWith("Z") || s.includes("+"))) s = s + "Z";
+
   if (!dateStr) return "Nikoli";
   const utcStr = dateStr.endsWith('Z') || dateStr.includes('+') ? dateStr : dateStr + 'Z';
   const diff = Date.now() - new Date(utcStr).getTime();
@@ -756,7 +764,6 @@ export default function StockTracker() {
   const [stores, setStores] = useState([]);
   const [status, setStatus] = useState(null);
   const [notifications, setNotifications] = useState([]);
-  const [tick, setTick] = useState(0); // forces timeAgo to re-render every minute
   const [keywordWatches, setKeywordWatches] = useState([]);
   const [telegramSettings, setTelegramSettings] = useState({ token: "", chatId: "", connected: false });
   const [showModal, setShowModal] = useState(false);
@@ -818,12 +825,6 @@ export default function StockTracker() {
     const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
   }, [fetchData, fetchTelegramSettings]);
-
-  // Tick every 60s so timeAgo labels re-render without API call
-  useEffect(() => {
-    const tickInterval = setInterval(() => setTick(t => t + 1), 60000);
-    return () => clearInterval(tickInterval);
-  }, []);
 
   // Auto-build cart URLs for all domains that have in-stock items
   useEffect(() => {
@@ -1154,7 +1155,7 @@ export default function StockTracker() {
                       </button>
                       {cartUrls[domain.domain] && (
                         <>
-                          <a href={cartUrls[domain.domain].split('?')[0].split('&checkout')[0]}
+                          <a href={(() => { try { return cartUrls[domain.domain]; } catch(e) { return '#'; } })()}
                             target="_blank" rel="noopener noreferrer"
                             className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-bold transition-colors">
                             <Eye size={14} /> Odpri košarico

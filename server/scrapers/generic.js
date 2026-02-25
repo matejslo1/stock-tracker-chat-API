@@ -77,71 +77,47 @@ class GenericScraper {
       console.log(`  🔎 Scraping: ${url}`);
       console.log(`  🏪 Platform: ${isShopify ? 'Shopify' : storeConfig.store_name}`);
 
-      // 1. Shopify product.js API
+      // 1. Shopify product.js API — most reliable, try FIRST for any Shopify site
       let shopifyResult = { inStock: null, price: null, variantId: null };
       if (isShopify) {
         shopifyResult = await this.extractShopifyData($, html, url);
         console.log(`  🛍️  Shopify extra: inStock=${shopifyResult.inStock}, price=${shopifyResult.price}, variantId=${shopifyResult.variantId}`);
-      }
 
-      // 2. JSON-LD structured data — ALWAYS check, even if product.js said in stock
-      const jsonLdResult = this.extractFromJsonLd($, html);
-      console.log(`  📄 JSON-LD: inStock=${jsonLdResult.inStock}, price=${jsonLdResult.price}`);
-
-      // 3. CSS selector extraction — ALWAYS check for comprehensive coverage
-      const selectorResult = this.extractData($, storeConfig, url);
-      console.log(`  🎯 Selectors: inStock=${selectorResult.inStock}, rawText="${selectorResult.rawStockText}"`);
-
-      // 4. Shopify add-to-cart button state — extra check from HTML
-      let addToCartInStock = null;
-      if (isShopify) {
-        const cartBtnSelectors = [
-          'button[name="add"]',
-          '.product-form__submit',
-          'form[action="/cart/add"] button[type="submit"]',
-          '.shopify-payment-button button',
-          'button.product-form__cart-submit',
-        ];
-        for (const sel of cartBtnSelectors) {
-          const btn = $(sel);
-          if (btn.length > 0) {
-            const isDisabled = btn.prop('disabled') || btn.attr('disabled') !== undefined || btn.attr('aria-disabled') === 'true' || btn.hasClass('disabled');
-            const btnText = btn.text().trim().toLowerCase();
-            const soldOutTexts = ['sold out', 'out of stock', 'razprodano', 'ni na zalogi', 'unavailable', 'vyprodáno'];
-            const hasSoldOut = soldOutTexts.some(t => btnText.includes(t));
-            if (isDisabled || hasSoldOut) {
-              addToCartInStock = false;
-            } else {
-              addToCartInStock = true;
-            }
-            console.log(`  🛒 Add-to-cart button: disabled=${isDisabled}, text="${btnText}", soldOut=${hasSoldOut}, inStock=${addToCartInStock}`);
-            break;
-          }
+        // If product.js says IN STOCK, trust it and return early.
+        // If it says OUT OF STOCK, still check JSON-LD and HTML selectors as fallback
+        // (Shopify sometimes returns available:false when inventory_policy='continue')
+        if (shopifyResult.inStock === true && shopifyResult.variantId) {
+          const jsonLdResult = this.extractFromJsonLd($, html);
+          return {
+            inStock: shopifyResult.inStock,
+            price: shopifyResult.price || jsonLdResult.price,
+            isShopify: true,
+            variantId: shopifyResult.variantId,
+            stockQty: shopifyResult.stockQty || 0,
+            imageUrl: jsonLdResult.imageUrl || shopifyResult.imageUrl,
+            rawStockText: shopifyResult.inStock ? 'in stock' : 'out of stock',
+          };
         }
       }
 
-      // Merge priority: if ANY reliable method says IN STOCK -> in stock
-      // product.js false can be wrong (inventory_policy:continue), so HTML/JSON-LD can override
-      const votes = [
-        { source: 'product.js', value: shopifyResult.inStock },
-        { source: 'JSON-LD', value: jsonLdResult.inStock },
-        { source: 'selectors', value: selectorResult.inStock },
-        { source: 'add-to-cart', value: addToCartInStock },
-      ].filter(v => v.value !== null);
-      
-      console.log(`  📊 Stock votes: ${votes.map(v => `${v.source}=${v.value}`).join(', ')}`);
+      // 2. JSON-LD structured data
+      const jsonLdResult = this.extractFromJsonLd($, html);
+      console.log(`  📄 JSON-LD: inStock=${jsonLdResult.inStock}, price=${jsonLdResult.price}`);
 
-      let finalInStock;
-      if (votes.some(v => v.value === true)) {
-        // If ANY method says in stock, trust it (false negatives are more common than false positives)
-        finalInStock = true;
-      } else if (votes.length > 0) {
-        // All votes are false — out of stock
-        finalInStock = false;
-      } else {
-        // No data at all
-        finalInStock = false;
-      }
+      // 3. CSS selector extraction
+      const selectorResult = this.extractData($, storeConfig, url);
+      console.log(`  🎯 Selectors: inStock=${selectorResult.inStock}, rawText="${selectorResult.rawStockText}"`);
+
+      // Merge priority: if ANY method says IN STOCK -> in stock
+      // product.js false can be wrong (inventory_policy:continue), so HTML/JSON-LD can override
+      const finalInStock =
+        shopifyResult.inStock === true ? true :          // product.js says yes -> trust it
+        jsonLdResult.inStock === true ? true :            // JSON-LD says yes -> trust it  
+        selectorResult.inStock === true ? true :          // HTML selector says yes -> trust it
+        shopifyResult.inStock === false && jsonLdResult.inStock === null && selectorResult.inStock === null ? false : // only product.js voted, said no
+        jsonLdResult.inStock !== null ? jsonLdResult.inStock :
+        selectorResult.inStock !== null ? selectorResult.inStock :
+        false;
 
       const finalPrice = shopifyResult.price || jsonLdResult.price || selectorResult.price;
       console.log(`  ✅ Final: inStock=${finalInStock}, price=${finalPrice}`);
@@ -152,7 +128,7 @@ class GenericScraper {
         isShopify,
         variantId: shopifyResult.variantId || null,
         stockQty: shopifyResult.stockQty || 0,
-        imageUrl: jsonLdResult.imageUrl || shopifyResult.imageUrl || selectorResult.imageUrl,
+        imageUrl: jsonLdResult.imageUrl || selectorResult.imageUrl,
         rawStockText: selectorResult.rawStockText || (finalInStock !== null ? (finalInStock ? 'in stock' : 'out of stock') : ''),
       };
     } catch (error) {
@@ -402,22 +378,7 @@ class GenericScraper {
           else if (json['@graph']) product = json['@graph'].find(g => g['@type'] === 'Product');
 
           if (product && product.offers) {
-            let offers = [];
-            const rawOffers = product.offers;
-            if (Array.isArray(rawOffers)) {
-              offers = rawOffers;
-            } else if (rawOffers['@type'] === 'AggregateOffer' || rawOffers['@type'] === 'AggregateOffer') {
-              // AggregateOffer may have nested offers array
-              if (Array.isArray(rawOffers.offers)) offers = rawOffers.offers;
-              else offers = [rawOffers];
-              // Also check the AggregateOffer's own availability
-              if (rawOffers.availability) {
-                const aggInStock = rawOffers.availability.toLowerCase().includes('instock');
-                if (aggInStock) result.inStock = true;
-              }
-            } else {
-              offers = [rawOffers];
-            }
+            const offers = Array.isArray(product.offers) ? product.offers : [product.offers];
             let anyInStock = null;
             let bestPrice = null;
             for (const offer of offers) {
@@ -438,16 +399,6 @@ class GenericScraper {
     if (result.price === null) {
       const metaPrice = $('meta[property="og:price:amount"], meta[property="product:price:amount"]').attr('content');
       if (metaPrice) result.price = parseFloat(metaPrice);
-    }
-    // Check Shopify/OG meta tags for stock availability
-    if (result.inStock === null) {
-      const ogAvailability = $('meta[property="og:availability"]').attr('content');
-      if (ogAvailability) {
-        const avail = ogAvailability.toLowerCase().trim();
-        if (avail === 'instock' || avail === 'in stock') result.inStock = true;
-        else if (avail === 'outofstock' || avail === 'out of stock' || avail === 'oos') result.inStock = false;
-        console.log(`  📋 og:availability meta: "${ogAvailability}" -> inStock=${result.inStock}`);
-      }
     }
     if (!result.imageUrl) result.imageUrl = $('meta[property="og:image"]').attr('content') || null;
     return result;
