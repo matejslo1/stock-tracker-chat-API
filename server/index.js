@@ -476,6 +476,10 @@ app.get("/api/cart/domains", (req, res) => {
 });
 
 app.post("/api/cart/build", async (req, res) => {
+    try {
+      const products = Array.isArray(req.body?.products) ? req.body.products : [];
+      if (!products.length) return res.status(400).json({ error: 'No products provided' });
+
   try {
     const { domain } = req.body;
     if (!domain) return res.status(400).json({ error: "domain required" });
@@ -485,6 +489,11 @@ app.post("/api/cart/build", async (req, res) => {
     const result = await buildCartUrlForProducts(products);
     res.json(result);
   } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (err) {
+      console.error('Cart build failed:', err);
+      return res.status(500).json({ error: 'Cart build failed' });
+    }
+
 });
 
 // -----------------------------

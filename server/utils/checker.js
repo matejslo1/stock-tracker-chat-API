@@ -337,3 +337,6 @@ await Promise.all(products.map(product => limit(async () => {
 }
 
 module.exports = new StockChecker();
+
+
+module.exports.checkSingleProduct = checkProduct;
