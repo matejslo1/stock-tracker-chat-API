@@ -754,26 +754,55 @@ const SettingsTab = ({ telegramSettings, telegramForm, setTelegramForm, savingTe
                   <p>🐒 Košarica se zgradi z <strong>1x</strong> na izdelek. Tampermonkey skripta na strani trgovine avtomatsko prilagodi količino na dovoljeno mejo.</p>
                   <p>• Hitrejša gradnja košarice (brez server-side probing-a omejitev)</p>
                   <p>• Na cart strani avtomatsko poveča qty na max dovoljeno</p>
-                  <p>• Ob checkout napaki prilagodi in poskusi znova</p>
+                  <p>• Ob checkout napaki prilagodi in poskusi znova (max 3x)</p>
                   <p>• Naučene omejitve se shranijo lokalno v brskalniku</p>
+                  <p>• Vizualen 🛡️ indikator + banner ob prilagoditvi</p>
                 </div>
                 <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg space-y-2">
-                  <p className="text-xs font-bold text-yellow-800">📋 Namestitev:</p>
-                  <ol className="text-xs text-yellow-700 space-y-0.5 list-decimal list-inside">
+                  <p className="text-xs font-bold text-yellow-800">📋 Namestitev / Posodobitev:</p>
+                  <ol className="text-xs text-yellow-700 space-y-1 list-decimal list-inside">
                     <li>Namesti <a href="https://www.tampermonkey.net/" target="_blank" rel="noopener noreferrer" className="underline font-semibold">Tampermonkey</a> razširitev za brskalnik</li>
-                    <li>Klikni spodnji gumb — Tampermonkey bo ponudil namestitev</li>
-                    <li>Potrdi namestitev v Tampermonkey dialogu</li>
-                    <li>Po potrebi dodaj <code>@match</code> pravila za dodatne trgovine</li>
+                    <li>Ustvari nov userscript z naslednjimi <code>@require</code> vrsticami:</li>
                   </ol>
+                  <pre className="text-[10px] bg-gray-900 text-green-300 p-3 rounded-lg overflow-x-auto whitespace-pre leading-relaxed select-all">{`// ==UserScript==
+// @name         TCGStar Cart Limit Auto-Fix
+// @namespace    stock-tracker-chat
+// @version      5.0
+// @description  Auto-fix cart qty limits (v5)
+// @match        https://tcgstar.eu/*
+// @match        https://checkout.shopify.com/*
+// @match        https://shop.app/*
+// @run-at       document-idle
+// @grant        none
+// @require      ${window.location.origin}/tm/tcgstar-limit-core.js?v=5
+// @require      ${window.location.origin}/tm/tcgstar-limit-config.js?v=5
+// @require      ${window.location.origin}/tm/tcgstar-limit-loader.js?v=5
+// ==/UserScript==`}</pre>
+                  <p className="text-[10px] text-yellow-600 mt-1">💡 Če že imaš staro skripto (v4), samo zamenjaj <code>?v=4</code> → <code>?v=5</code> v @require vrsticah.</p>
+                </div>
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-xs font-bold text-blue-800 mb-1">🆕 Kaj je novega v v5:</p>
+                  <div className="text-xs text-blue-700 space-y-0.5">
+                    <p>• <strong>Cart optimizacija</strong> — na /cart strani avtomatsko poveča qty na naučen max</p>
+                    <p>• <strong>Checkout retry</strong> — ob napaki prilagodi qty in poskusi checkout znova (3x)</p>
+                    <p>• <strong>Vizualni banner</strong> — lep prikaz ob prilagoditvi količin</p>
+                    <p>• <strong>Status indikator</strong> — 🛡️ badge z info o naučenih omejitvah</p>
+                    <p>• <strong>Input clamping</strong> — prepreči ročni vnos qty nad max</p>
+                    <p>• <strong>V1→V2 migracija</strong> — obstoječe naučene omejitve se prenesejo</p>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <a href="/tm/stock-tracker-cart-enforcer.user.js"
-                    className="flex items-center gap-1.5 px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-xl text-xs font-bold transition-colors shadow-sm">
-                    <Zap size={13} /> Namesti Tampermonkey skripto
+                  <a href="/tm/tcgstar-limit-core.js?v=5" target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-bold transition-colors">
+                    <ExternalLink size={12} /> core.js
                   </a>
-                  <a href="/tm/stock-tracker-cart-enforcer.user.js" target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-colors">
-                    <ExternalLink size={12} /> Preglej kodo
+                  <a href="/tm/tcgstar-limit-config.js?v=5" target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-bold transition-colors">
+                    <ExternalLink size={12} /> config.js
+                  </a>
+                  <a href="/tm/tcgstar-limit-loader.js?v=5" target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-bold transition-colors">
+                    <ExternalLink size={12} /> loader.js
                   </a>
                 </div>
               </div>
