@@ -816,23 +816,25 @@ export default function StockTracker() {
 
   const showToast = (message, type = "info") => setToast({ message, type });
 
+  const safeJson = (r, fallback) => r.ok ? r.json().then(d => Array.isArray(fallback) ? (Array.isArray(d) ? d : fallback) : (d && typeof d === 'object' ? d : fallback)).catch(() => fallback) : Promise.resolve(fallback);
+
   const fetchData = useCallback(async () => {
     try {
       const [prods, sts, stat, notifs, kwWatches, domains, settings] = await Promise.all([
-        apiFetch(`${API}/products`).then(r => r.json()),
-        apiFetch(`${API}/stores`).then(r => r.json()),
-        apiFetch(`${API}/status`).then(r => r.json()),
-        apiFetch(`${API}/notifications`).then(r => r.json()),
-        apiFetch(`${API}/keyword-watches`).then(r => r.json()),
-        apiFetch(`${API}/cart/domains`).then(r => r.json()).catch(() => []),
-        apiFetch(`${API}/app-settings`).then(r => r.json()).catch(() => ({})),
+        apiFetch(`${API}/products`).then(r => safeJson(r, [])),
+        apiFetch(`${API}/stores`).then(r => safeJson(r, [])),
+        apiFetch(`${API}/status`).then(r => safeJson(r, {})).catch(() => ({})),
+        apiFetch(`${API}/notifications`).then(r => safeJson(r, [])),
+        apiFetch(`${API}/keyword-watches`).then(r => safeJson(r, [])),
+        apiFetch(`${API}/cart/domains`).then(r => safeJson(r, [])).catch(() => []),
+        apiFetch(`${API}/app-settings`).then(r => safeJson(r, {})).catch(() => ({})),
       ]);
-      setProducts(prods);
-      setStores(sts);
-      setStatus(stat);
-      setNotifications(notifs);
-      setKeywordWatches(kwWatches);
-      setShopifyDomains(domains);
+      setProducts(Array.isArray(prods) ? prods : []);
+      setStores(Array.isArray(sts) ? sts : []);
+      setStatus(stat && typeof stat === 'object' ? stat : {});
+      setNotifications(Array.isArray(notifs) ? notifs : []);
+      setKeywordWatches(Array.isArray(kwWatches) ? kwWatches : []);
+      setShopifyDomains(Array.isArray(domains) ? domains : []);
       if (settings && settings.check_interval_minutes) setAppSettings(settings);
     } catch (e) {
       showToast("Napaka pri povezavi s strežnikom", "error");
@@ -896,19 +898,26 @@ export default function StockTracker() {
 
   const handleCheck = async (id) => {
     setCheckingId(id);
-    await apiFetch(`${API}/check/${id}`, { method: "POST" });
-    showToast("Preverjanje zaloge...", "info");
-    setTimeout(() => { fetchData(); setCheckingId(null); }, 5000);
+    try {
+      const res = await apiFetch(`${API}/check/${id}`, { method: "POST" });
+      if (!res.ok) { showToast(`Strežnik ni dosegljiv (${res.status})`, "error"); setCheckingId(null); return; }
+      showToast("Preverjanje zaloge...", "info");
+      setTimeout(() => { fetchData(); setCheckingId(null); }, 5000);
+    } catch(e) { showToast("Napaka pri preverjanju", "error"); setCheckingId(null); }
   };
 
   const handleCheckAll = async () => {
     setCheckingId("all");
-    await apiFetch(`${API}/check`, { method: "POST" });
-    showToast("Preverjam vse izdelke...", "info");
+    try {
+      const res = await apiFetch(`${API}/check`, { method: "POST" });
+      if (!res.ok) { showToast(`Strežnik ni dosegljiv (${res.status})`, "error"); setCheckingId(null); return; }
+      showToast("Preverjam vse izdelke...", "info");
+    } catch(e) { showToast("Napaka pri preverjanju", "error"); setCheckingId(null); return; }
     const poll = setInterval(async () => {
       try {
         const res = await apiFetch(`${API}/status`);
-        const data = await res.json();
+        if (!res.ok) { clearInterval(poll); setCheckingId(null); return; }
+        const data = await res.json().catch(() => ({}));
         if (!data.isChecking) {
           clearInterval(poll);
           await fetchData();
