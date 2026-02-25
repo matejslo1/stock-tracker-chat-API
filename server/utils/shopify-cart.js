@@ -294,8 +294,10 @@ function buildCheckoutUrl(domain, items) {
 
 /**
  * Build cart URL for list of in-stock Shopify products
+ * @param {Array} products - list of product rows from DB
+ * @param {number|null} globalMaxQty - optional global max qty from app settings
  */
-async function buildCartUrlForProducts(products) {
+async function buildCartUrlForProducts(products, globalMaxQty = null) {
   const shopifyProducts = products.filter(p => p.store === 'shopify' && p.in_stock);
 
   if (shopifyProducts.length === 0) {
@@ -312,15 +314,18 @@ async function buildCartUrlForProducts(products) {
     if (variant) {
       if (!domain) domain = variant.domain;
       if (variant.domain === domain) {
-        // Use manually set max_order_qty if it was explicitly set (>1 or product was edited)
-        const manualQty = product.max_order_qty && product.max_order_qty > 0 ? product.max_order_qty : null;
-        const qty = manualQty || variant.maxQty;
+        // Priority: per-product max_order_qty > global_max_qty > detected store limit
+        const perProductQty = product.max_order_qty && product.max_order_qty > 0 ? product.max_order_qty : null;
+        let qty = variant.maxQty;
+        if (globalMaxQty && globalMaxQty > 0) qty = Math.min(qty, globalMaxQty);
+        if (perProductQty) qty = Math.min(qty, perProductQty);
         items.push({
           variantId: variant.variantId,
           quantity: qty,
           name: product.name,
           price: product.current_price,
           stockQty: variant.stockQty,
+          appliedLimit: perProductQty ? 'per-product' : (globalMaxQty ? 'global' : 'store'),
         });
       } else {
         errors.push(`${product.name}: različna domena (${variant.domain})`);
@@ -331,9 +336,12 @@ async function buildCartUrlForProducts(products) {
           const productDomain = new URL(product.url).origin;
           if (!domain) domain = productDomain;
           if (productDomain === domain) {
+            const perProductQty = product.max_order_qty || 1;
+            let qty = perProductQty;
+            if (globalMaxQty && globalMaxQty > 0) qty = Math.min(qty, globalMaxQty);
             items.push({
               variantId: product.shopify_variant_id,
-              quantity: product.max_order_qty || 1,
+              quantity: qty,
               name: product.name,
               price: product.current_price,
             });

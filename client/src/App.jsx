@@ -481,6 +481,7 @@ const KeywordModal = ({ watch, onSave, onClose, appSettings }) => {
 const SettingsTab = ({ telegramSettings, telegramForm, setTelegramForm, savingTelegram, handleSaveTelegram, handleTestTelegram, status, stores, onStoresUpdate, showToast, appSettings, onSettingsChange }) => {
   const [intervalVal, setIntervalVal] = useState(String(appSettings?.check_interval_minutes || status?.checkInterval || 5));
   const [autoPurchase, setAutoPurchase] = useState(status?.autoPurchaseEnabled || false);
+  const [globalMaxQty, setGlobalMaxQty] = useState(String(appSettings?.global_max_qty || ''));
   const [savingSettings, setSavingSettings] = useState(false);
   const [editingStore, setEditingStore] = useState(null);
   const [storeForm, setStoreForm] = useState({});
@@ -490,7 +491,7 @@ const SettingsTab = ({ telegramSettings, telegramForm, setTelegramForm, savingTe
     try {
       await apiFetch('/api/app-settings', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ check_interval_minutes: parseInt(intervalVal) || 5, auto_purchase_enabled: autoPurchase }),
+        body: JSON.stringify({ check_interval_minutes: parseInt(intervalVal) || 5, auto_purchase_enabled: autoPurchase, global_max_qty: globalMaxQty ? parseInt(globalMaxQty) : null }),
       });
       showToast('Nastavitve shranjene! Restart za novo cron vrednost.', 'success');
       if (onSettingsChange) onSettingsChange({ check_interval_minutes: parseInt(intervalVal) || 5 });
@@ -677,6 +678,34 @@ const SettingsTab = ({ telegramSettings, telegramForm, setTelegramForm, savingTe
                 <Toggle checked={autoPurchase} onChange={setAutoPurchase} color="#f97316" />
                 <span className="text-sm text-gray-600">{autoPurchase ? 'Vklopljen' : 'Izklopljen'}</span>
               </div>
+            </div>
+          </div>
+
+          {/* Global Max Qty */}
+          <div className="p-4 bg-orange-50 border border-orange-200 rounded-xl space-y-3">
+            <div>
+              <p className="text-sm font-semibold text-orange-900 flex items-center gap-2"><ShoppingCart size={15} /> Globalna omejitev količine (košarica)</p>
+              <p className="text-xs text-orange-700 mt-0.5">Velja za vse Shopify izdelke pri gradnji košarice. Posamezna nastavitev izdelka (<em>max_order_qty</em>) ima prednost pred globalno.</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <input
+                type="number" min="1" max="99"
+                value={globalMaxQty}
+                onChange={e => setGlobalMaxQty(e.target.value)}
+                placeholder="npr. 3"
+                className="w-32 px-4 py-2.5 rounded-xl border border-orange-300 focus:border-orange-500 focus:ring-2 focus:ring-orange-100 outline-none text-sm transition-all"
+              />
+              {globalMaxQty && (
+                <button onClick={() => setGlobalMaxQty('')}
+                  className="text-xs text-gray-500 hover:text-red-500 underline transition-colors">
+                  Odstrani omejitev
+                </button>
+              )}
+            </div>
+            <div className="text-xs text-orange-700 space-y-0.5">
+              <p>📦 <strong>Logika:</strong> <code>min(global_max, store_limit, per_product_max)</code></p>
+              <p>• Prazno = brez globalne omejitve (uporabi zaznano omejitev trgovine)</p>
+              <p>• Per-product <em>max_order_qty</em> (nastavi pri posameznem izdelku) ima vedno prednost</p>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3 text-sm">
