@@ -309,95 +309,65 @@ async function buildCartUrlForProducts(products, globalMaxQty = null, cartQtyMod
   const errors = [];
   let domain = null;
 
-  // In tampermonkey mode, we skip server-side limit detection and just add qty=1 per item
-  // The Tampermonkey script will handle adjusting quantities on the store side
-  const skipLimitDetection = (cartQtyMode === 'tampermonkey');
+  // In tampermonkey mode, we still detect limits server-side but ONLY via fast cart probe
+  // (skip slow heuristics like tags, description, product.js parsing).
+  // The TM browser script acts as a safety net on /cart page.
+  const skipLimitDetection = false; // Always probe — TM mode just uses faster probing
 
   for (const product of shopifyProducts) {
-    if (skipLimitDetection) {
-      // Tampermonkey mode: just add 1 of each, the browser script handles limits
-      try {
-        const productDomain = new URL(product.url).origin;
-        if (!domain) domain = productDomain;
-        if (productDomain === domain) {
-          // Try to get variant ID without probing limits
-          const variant = await getShopifyVariant(product.url).catch(() => null);
-          const variantId = variant?.variantId || product.shopify_variant_id;
-          if (variantId) {
+    const variant = await getShopifyVariant(product.url).catch(() => null);
+
+    if (variant) {
+      if (!domain) domain = variant.domain;
+      if (variant.domain === domain) {
+        const perProductQty = product.max_order_qty && product.max_order_qty > 0 ? product.max_order_qty : null;
+        let qty = variant.maxQty;
+
+        if (cartQtyMode === 'global') {
+          if (globalMaxQty && globalMaxQty > 0) qty = Math.min(qty, globalMaxQty);
+          if (perProductQty) qty = Math.min(qty, perProductQty);
+        } else if (cartQtyMode === 'per_product') {
+          if (perProductQty) qty = Math.min(qty, perProductQty);
+        } else if (cartQtyMode === 'tampermonkey') {
+          // TM mode: use detected store limit, per-product overrides if set
+          if (perProductQty) qty = Math.min(qty, perProductQty);
+        }
+
+        items.push({
+          variantId: variant.variantId,
+          quantity: qty,
+          name: product.name,
+          price: product.current_price,
+          stockQty: variant.stockQty,
+          appliedLimit: perProductQty ? 'per-product' : (cartQtyMode === 'global' && globalMaxQty ? 'global' : 'store'),
+        });
+      } else {
+        errors.push(`${product.name}: različna domena (${variant.domain})`);
+      }
+    } else {
+      if (product.shopify_variant_id) {
+        try {
+          const productDomain = new URL(product.url).origin;
+          if (!domain) domain = productDomain;
+          if (productDomain === domain) {
+            const perProductQty = product.max_order_qty || 1;
+            let qty = perProductQty;
+            if (cartQtyMode === 'global' && globalMaxQty && globalMaxQty > 0) qty = Math.min(qty, globalMaxQty);
             items.push({
-              variantId,
-              quantity: 1,
+              variantId: product.shopify_variant_id,
+              quantity: qty,
               name: product.name,
               price: product.current_price,
-              appliedLimit: 'tampermonkey',
             });
-          } else {
-            errors.push(`${product.name}: ni bilo mogoče pridobiti variant ID`);
           }
-        }
-      } catch(e) {
-        errors.push(`${product.name}: ${e.message}`);
-      }
-    } else {
-      // Normal mode: detect limits server-side
-      const variant = await getShopifyVariant(product.url);
-
-      if (variant) {
-        if (!domain) domain = variant.domain;
-        if (variant.domain === domain) {
-          const perProductQty = product.max_order_qty && product.max_order_qty > 0 ? product.max_order_qty : null;
-          let qty = variant.maxQty;
-
-          if (cartQtyMode === 'global') {
-            // Global mode: use global_max_qty as primary, per-product as override
-            if (globalMaxQty && globalMaxQty > 0) qty = Math.min(qty, globalMaxQty);
-            if (perProductQty) qty = Math.min(qty, perProductQty);
-          } else if (cartQtyMode === 'per_product') {
-            // Per-product mode: use per-product max_order_qty as primary
-            if (perProductQty) qty = Math.min(qty, perProductQty);
-            // Don't apply global max in per-product mode
-          }
-
-          items.push({
-            variantId: variant.variantId,
-            quantity: qty,
-            name: product.name,
-            price: product.current_price,
-            stockQty: variant.stockQty,
-            appliedLimit: perProductQty ? 'per-product' : (cartQtyMode === 'global' && globalMaxQty ? 'global' : 'store'),
-          });
-        } else {
-          errors.push(`${product.name}: različna domena (${variant.domain})`);
-        }
+        } catch(e) {}
       } else {
-        if (product.shopify_variant_id) {
-          try {
-            const productDomain = new URL(product.url).origin;
-            if (!domain) domain = productDomain;
-            if (productDomain === domain) {
-              const perProductQty = product.max_order_qty || 1;
-              let qty = perProductQty;
-              if (cartQtyMode === 'global' && globalMaxQty && globalMaxQty > 0) qty = Math.min(qty, globalMaxQty);
-              items.push({
-                variantId: product.shopify_variant_id,
-                quantity: qty,
-                name: product.name,
-                price: product.current_price,
-              });
-            }
-          } catch(e) {}
-        } else {
-          errors.push(`${product.name}: ni bilo mogoče pridobiti variant ID`);
-        }
+        errors.push(`${product.name}: ni bilo mogoče pridobiti variant ID`);
       }
     }
 
-    // Longer delay between products to avoid 429 on same domain
-    if (!skipLimitDetection) {
-      await new Promise(r => setTimeout(r, 1500 + Math.random() * 1000));
-    } else {
-      await new Promise(r => setTimeout(r, 500 + Math.random() * 500));
-    }
+    // Delay between products
+    await new Promise(r => setTimeout(r, 1500 + Math.random() * 1000));
   }
 
   const cartUrl = domain && items.length > 0 ? buildCartUrl(domain, items) : null;
