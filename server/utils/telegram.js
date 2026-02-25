@@ -403,17 +403,28 @@ class TelegramService {
       if (!this._isAuthorized(msg)) return;
       try {
         const db = require('./database');
-        const { buildCartUrlForProducts } = require('./shopify-cart');
+        const { buildSmartCartUrl } = require('./shopify-cart');
         const products = db.prepare("SELECT * FROM products WHERE store = 'shopify' AND in_stock = 1").all();
         if (!products.length) { this.bot.sendMessage(msg.chat.id, '❌ Ni Shopify izdelkov na zalogi.'); return; }
-        await this.bot.sendMessage(msg.chat.id, `🔄 Sestavljam košarico za ${products.length} izdelkov...`);
-        const result = await buildCartUrlForProducts(products);
+        // Load settings
+        const modeRow = db.prepare("SELECT value FROM app_settings WHERE key = 'cart_qty_mode'").get();
+        const cartQtyMode = modeRow?.value || 'global';
+        const globalMaxRow = db.prepare("SELECT value FROM app_settings WHERE key = 'global_max_qty'").get();
+        const globalMaxQty = globalMaxRow ? parseInt(globalMaxRow.value) || null : null;
+        await this.bot.sendMessage(msg.chat.id, `🔄 Sestavljam košarico za ${products.length} izdelkov...\n🔍 Preverja checkout omejitve...`);
+        const result = await buildSmartCartUrl(products, globalMaxQty, cartQtyMode);
         if (result.cartUrl) {
-          const itemList = result.items.map(i => `• ${i.name} (${i.quantity}x)${i.price ? ` — ${i.price} €` : ''}`).join('\n');
+          const itemList = result.items.map(i => {
+            let badge = '';
+            if (i.checkoutLimit) badge = ' ⚠️';
+            return `• ${i.name} (${i.quantity}x)${i.price ? ` — ${i.price} €` : ''}${badge}`;
+          }).join('\n');
           const errList = result.errors?.length ? `\n\n⚠️ Preskočeni:\n${result.errors.map(e => `• ${e}`).join('\n')}` : '';
-          await this.bot.sendMessage(msg.chat.id, `🛒 *Košarica pripravljena!*\n\n${itemList}${errList}\n\n✅ ${result.items.length} izdelkov`, {
+          const probeNote = result.limitsChanged ? '\n\n🔍 _Checkout omejitve zaznane in popravljene_' : '';
+          const checkoutUrl = result.checkoutUrl || (result.cartUrl + '?checkout');
+          await this.bot.sendMessage(msg.chat.id, `🛒 *Košarica pripravljena!*\n\n${itemList}${errList}${probeNote}\n\n✅ ${result.items.length} izdelkov`, {
             parse_mode: 'Markdown',
-            reply_markup: { inline_keyboard: [[{ text: '🛒 Dodaj v košarico', url: result.cartUrl }], [{ text: '💳 Direktno checkout', url: result.cartUrl + '?checkout' }]] }
+            reply_markup: { inline_keyboard: [[{ text: '🛒 Odpri košarico', url: result.cartUrl }], [{ text: '💳 Direktno checkout', url: checkoutUrl }]] }
           });
         } else { this.bot.sendMessage(msg.chat.id, `❌ ${result.errors?.join('\n') || 'Ni Shopify izdelkov ali so z različnih domen.'}`); }
       } catch(e) { this.bot.sendMessage(msg.chat.id, `❌ Napaka: ${e.message}`); }

@@ -194,7 +194,7 @@ await Promise.all(products.map(product => limit(async () => {
         let allInStockForCart = [];
         if (effectiveStore === 'shopify') {
           try {
-            const { buildCartUrlForProducts } = require('./shopify-cart');
+            const { buildSmartCartUrl } = require('./shopify-cart');
             const domain = new URL(product.url).origin;
             const allShopify = db.prepare('SELECT * FROM products WHERE store = ? AND in_stock = 1').all('shopify');
             const sameDomain = allShopify.filter(p => {
@@ -206,10 +206,15 @@ await Promise.all(products.map(product => limit(async () => {
             if (!withCurrent.find(p => p.id === product.id)) {
               withCurrent.push({ ...updatedProduct, in_stock: 1 });
             }
+            // Load cart settings
+            const modeRow = db.prepare("SELECT value FROM app_settings WHERE key = 'cart_qty_mode'").get();
+            const cartQtyMode = modeRow?.value || 'global';
+            const globalMaxRow = db.prepare("SELECT value FROM app_settings WHERE key = 'global_max_qty'").get();
+            const globalMaxQty = globalMaxRow ? parseInt(globalMaxRow.value) || null : null;
             allInStockForCart = withCurrent;
-            const cartResult = await buildCartUrlForProducts(withCurrent);
+            const cartResult = await buildSmartCartUrl(withCurrent, globalMaxQty, cartQtyMode);
             cartUrl = cartResult.cartUrl;
-            if (cartUrl) console.log(`  🛒 Cart URL (${withCurrent.length} products): ${cartUrl}`);
+            if (cartUrl) console.log(`  🛒 Cart URL (${withCurrent.length} products, checkout-probed): ${cartUrl}`);
           } catch(e) {
             console.log(`  ⚠️  Cart URL build failed: ${e.message}`);
           }
