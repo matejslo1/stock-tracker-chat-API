@@ -10,7 +10,7 @@ const checker = require("./utils/checker");
 const keywordWatcher = require("./utils/keyword-watcher");
 const telegram = require("./utils/telegram");
 const scraper = require("./scrapers/generic");
-const { buildCartUrl, buildCartUrlForProducts, buildSmartCartUrl } = require("./utils/shopify-cart");
+const { buildCartUrl, buildCartUrlForProducts } = require("./utils/shopify-cart");
 
 
 // Cron scheduling (global stock check) with dynamic interval from app_settings
@@ -488,7 +488,7 @@ app.post("/api/cart/build", async (req, res) => {
     // Load global_max_qty setting
     const globalMaxRow = db.prepare("SELECT value FROM app_settings WHERE key = 'global_max_qty'").get();
     const globalMaxQty = globalMaxRow ? parseInt(globalMaxRow.value) || null : null;
-    const result = await buildSmartCartUrl(products, globalMaxQty, cartQtyMode);
+    const result = await buildCartUrlForProducts(products, globalMaxQty, cartQtyMode);
     res.json({ ...result, cartQtyMode });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
