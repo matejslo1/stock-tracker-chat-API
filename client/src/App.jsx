@@ -1457,7 +1457,7 @@ export default function StockTracker() {
                         </a>
                       </div>
                       <div className="text-right shrink-0">
-                        <div className="text-2xl font-black text-gray-900">{w.known_count || 0}</div>
+                        <div className="text-2xl font-black text-gray-900">{w.last_found_count || 0}</div>
                         <div className="text-xs text-gray-500">najdenih</div>
                       </div>
                     </div>
