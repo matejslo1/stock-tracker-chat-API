@@ -419,7 +419,9 @@ class KeywordWatcher {
     // Update known maps
     filteredProducts.forEach(p => { if (p.inStock !== undefined) knownStockMap[p.url] = p.inStock; });
     const trackedUrls = db.prepare('SELECT url FROM products').all().map(p => p.url);
-    const allKnownUrls = [...new Set([...knownUrls.filter(u => trackedUrls.includes(u)), ...filteredProducts.map(p => p.url)])];
+    // Only mark as "known" products that are currently tracked in the products table.
+    // Products not in the table (deleted or never auto-added) will be re-discovered next check.
+    const allKnownUrls = [...new Set([...filteredProducts.filter(p => trackedUrls.includes(p.url)).map(p => p.url)])];
 
     db.prepare(`UPDATE keyword_watches SET known_product_urls=?, known_stock_map=?, last_checked=datetime('now'), last_found_count=?, updated_at=datetime('now') WHERE id=?`)
       .run(JSON.stringify(allKnownUrls), JSON.stringify(knownStockMap), filteredProducts.length, watch.id);

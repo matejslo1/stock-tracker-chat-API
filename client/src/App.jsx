@@ -1122,7 +1122,15 @@ export default function StockTracker() {
     setCheckingId(`kw-${id}`);
     await apiFetch(`${API}/keyword-watches/${id}/check`, { method: "POST" });
     showToast("Iščem ...", "info");
-    setTimeout(() => { fetchData(); setCheckingId(null); }, 5000);
+    let elapsed = 0;
+    const interval = setInterval(() => {
+      elapsed++;
+      fetchData();
+      if (elapsed >= 90) {
+        clearInterval(interval);
+        setCheckingId(null);
+      }
+    }, 1000);
   };
 
   const handleResetKeywordWatch = async (id) => {

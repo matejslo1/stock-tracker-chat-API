@@ -447,6 +447,8 @@ app.delete("/api/keyword-watches/:id", (req, res) => {
 
 app.post("/api/keyword-watches/:id/check", async (req, res) => {
   res.json({ ok: true });
+  // Reset known products before manual check so deleted products are re-discovered
+  db.prepare("UPDATE keyword_watches SET known_product_urls='[]', known_stock_map='{}' WHERE id=?").run(req.params.id);
   const watch = db.prepare("SELECT * FROM keyword_watches WHERE id = ?").get(req.params.id);
   if (watch) keywordWatcher.checkWatch(watch);
 });
