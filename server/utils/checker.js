@@ -195,12 +195,12 @@ await Promise.all(products.map(product => limit(async () => {
         // For Shopify: build grouped cart URL with ALL in-stock products from SAME domain
         let cartUrl = null;
         let allInStockForCart = [];
-        if (effectiveStore === 'shopify') {
+        if (['shopify', 'pokedom', 'tcgstar', 'pikazard'].includes(effectiveStore)) {
           try {
-            const { buildCartUrlForProducts } = require('./shopify-cart');
+            const { buildCartForProducts } = require('./cart-builder');
             const domain = new URL(product.url).origin;
-            const allShopify = db.prepare('SELECT * FROM products WHERE store = ? AND in_stock = 1').all('shopify');
-            const sameDomain = allShopify.filter(p => {
+            const allCartProducts = db.prepare("SELECT * FROM products WHERE store IN ('shopify', 'pokedom', 'tcgstar', 'pikazard') AND in_stock = 1").all();
+            const sameDomain = allCartProducts.filter(p => {
               try { return new URL(p.url).origin === domain; } catch(e) { return false; }
             });
             const withCurrent = sameDomain.map(p =>
@@ -210,7 +210,7 @@ await Promise.all(products.map(product => limit(async () => {
               withCurrent.push({ ...updatedProduct, in_stock: 1 });
             }
             allInStockForCart = withCurrent;
-            const cartResult = await buildCartUrlForProducts(withCurrent);
+            const cartResult = await buildCartForProducts(withCurrent);
             cartUrl = cartResult.cartUrl;
             if (cartUrl) console.log(`  🛒 Cart URL (${withCurrent.length} products): ${cartUrl}`);
           } catch(e) {

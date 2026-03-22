@@ -11,7 +11,8 @@ const keywordWatcher = require("./utils/keyword-watcher");
 const categoryWatcher = require("./utils/category-watcher");
 const telegram = require("./utils/telegram");
 const scraper = require("./scrapers/generic");
-const { buildCartUrl, buildCartUrlForProducts } = require("./utils/shopify-cart");
+const { buildCartForProducts } = require("./utils/cart-builder");
+const { decodeCartItems } = require("./utils/pikazard-cart");
 const { detectStoreFromUrl } = require("./utils/storeDetection");
 
 
@@ -563,12 +564,12 @@ app.post("/api/category-watches/:id/reset", (req, res) => {
 // Shopify cart
 app.get("/api/cart/domains", (req, res) => {
   try {
-    const shopifyProducts = db.prepare("SELECT * FROM products WHERE store = 'shopify'").all();
+    const cartProducts = db.prepare("SELECT * FROM products WHERE store IN ('shopify', 'pokedom', 'tcgstar', 'pikazard')").all();
     const domainMap = {};
-    shopifyProducts.forEach(p => {
+    cartProducts.forEach(p => {
       try {
         const domain = new URL(p.url).origin;
-        if (!domainMap[domain]) domainMap[domain] = { domain, products: [], inStock: 0 };
+        if (!domainMap[domain]) domainMap[domain] = { domain, store: p.store, products: [], inStock: 0 };
         domainMap[domain].products.push(p);
         if (p.in_stock) domainMap[domain].inStock++;
       } catch(e) {}
@@ -581,7 +582,7 @@ app.post("/api/cart/build", async (req, res) => {
   try {
     const { domain } = req.body;
     if (!domain) return res.status(400).json({ error: "domain required" });
-    const products = db.prepare("SELECT * FROM products WHERE store = 'shopify' AND in_stock = 1").all()
+    const products = db.prepare("SELECT * FROM products WHERE store IN ('shopify', 'pokedom', 'tcgstar', 'pikazard') AND in_stock = 1").all()
       .filter(p => { try { return new URL(p.url).origin === domain; } catch(e) { return false; } });
     if (products.length === 0) return res.json({ cartUrl: null, message: "Ni izdelkov na zalogi", items: [] });
     // Load cart quantity mode setting
@@ -590,9 +591,95 @@ app.post("/api/cart/build", async (req, res) => {
     // Load global_max_qty setting
     const globalMaxRow = db.prepare("SELECT value FROM app_settings WHERE key = 'global_max_qty'").get();
     const globalMaxQty = globalMaxRow ? parseInt(globalMaxRow.value) || null : null;
-    const result = await buildCartUrlForProducts(products, globalMaxQty, cartQtyMode);
+    const result = await buildCartForProducts(products, globalMaxQty, cartQtyMode);
     res.json({ ...result, cartQtyMode });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/cart-helper/pikazard", (req, res) => {
+  const items = decodeCartItems(req.query.items);
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).send("Invalid cart payload");
+  }
+
+  const safeItems = items
+    .filter(item => item && item.productId && item.priceId)
+    .map(item => ({
+      productId: String(item.productId),
+      priceId: String(item.priceId),
+      amount: Math.max(1, parseInt(item.amount, 10) || 1),
+      language: item.language === 'en' ? 'en' : 'sk',
+    }));
+
+  if (safeItems.length === 0) {
+    return res.status(400).send("No valid cart items");
+  }
+
+  res.type("html").send(`<!doctype html>
+<html lang="sl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pripravljam Pikazard košarico...</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #f8fafc; color: #0f172a; display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; }
+    .card { background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:24px; max-width:520px; box-shadow:0 10px 30px rgba(15,23,42,.08); }
+    h1 { margin:0 0 12px; font-size:20px; }
+    p { margin:8px 0; line-height:1.5; }
+    a { color:#2563eb; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Pripravljam Pikazard košarico</h1>
+    <p>Če se popup ne odpre sam, klikni spodnji gumb.</p>
+    <p><a id="manual" href="https://www.pikazard.eu/kosik/" target="pikazardCartWindow" rel="noopener noreferrer">Odpri Pikazard košarico</a></p>
+    <p id="status">Dodajam ${safeItems.length} izdelkov ...</p>
+  </div>
+  <script>
+    const items = ${JSON.stringify(safeItems)};
+    const targetName = 'pikazardCartWindow';
+    const statusEl = document.getElementById('status');
+    const popup = window.open('https://www.pikazard.eu/', targetName);
+
+    function submitItem(index) {
+      if (index >= items.length) {
+        statusEl.textContent = 'Košarica je pripravljena. Odpiram /kosik/ ...';
+        setTimeout(() => {
+          if (popup && !popup.closed) popup.location = 'https://www.pikazard.eu/kosik/';
+        }, 900);
+        return;
+      }
+
+      statusEl.textContent = 'Dodajam izdelek ' + (index + 1) + ' / ' + items.length + ' ...';
+      const item = items[index];
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = 'https://www.pikazard.eu/action/Cart/addCartItem/';
+      form.target = targetName;
+
+      [['productId', item.productId], ['priceId', item.priceId], ['amount', item.amount], ['language', item.language]].forEach(([name, value]) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = name;
+        input.value = String(value);
+        form.appendChild(input);
+      });
+
+      document.body.appendChild(form);
+      form.submit();
+      form.remove();
+      setTimeout(() => submitItem(index + 1), 1200);
+    }
+
+    if (!popup) {
+      statusEl.textContent = 'Popup je blokiran. Dovoli popup in poskusi znova.';
+    } else {
+      setTimeout(() => submitItem(0), 700);
+    }
+  </script>
+</body>
+</html>`);
 });
 
 // -----------------------------

@@ -299,7 +299,7 @@ function buildCheckoutUrl(domain, items) {
  * @param {string} cartQtyMode - 'global' | 'per_product' | 'tampermonkey'
  */
 async function buildCartUrlForProducts(products, globalMaxQty = null, cartQtyMode = 'global') {
-  const shopifyProducts = products.filter(p => p.store === 'shopify' && p.in_stock);
+  const shopifyProducts = products.filter(p => ['shopify', 'pokedom', 'tcgstar'].includes(p.store) && p.in_stock);
 
   if (shopifyProducts.length === 0) {
     return { cartUrl: null, items: [], domain: null, errors: ['Ni Shopify izdelkov na zalogi'] };

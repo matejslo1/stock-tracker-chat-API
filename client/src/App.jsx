@@ -1356,10 +1356,10 @@ export default function StockTracker() {
   }, {});
   const quickStoreFilters = [
     { value: "all", label: "Vse", count: products.length },
-    { value: "pikazard", label: "Pikazard", count: storeCounts.pikazard || 0 },
-    { value: "pokedom", label: "PokeDom", count: storeCounts.pokedom || 0 },
-    { value: "tcgstar", label: "TCGStar", count: storeCounts.tcgstar || 0 },
-  ].filter(filter => filter.value === "all" || filter.count > 0);
+    { value: "pikazard", label: "pikazard", count: storeCounts.pikazard || 0 },
+    { value: "pokedom", label: "pokedom", count: storeCounts.pokedom || 0 },
+    { value: "tcgstar", label: "tcgstar", count: storeCounts.tcgstar || 0 },
+  ];
   const extraStores = [...new Set(products.map(p => p.store))].filter(store => !quickStoreFilters.some(filter => filter.value === store));
 
   return (
@@ -1459,7 +1459,7 @@ export default function StockTracker() {
               </div>
             ) : (
               <>
-                {/* Shopify Cart Sections - grouped by domain */}
+                {/* Cart Sections - grouped by store domain */}
                 {shopifyDomains.filter(d => d.inStock > 0).map(domain => (
                   <div key={domain.domain} className="mb-6 bg-gradient-to-r from-emerald-50 to-teal-50 border-2 border-emerald-300 rounded-2xl p-4 shadow-sm">
                     {/* Store header */}
