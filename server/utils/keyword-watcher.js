@@ -42,7 +42,9 @@ class KeywordWatcher {
 
   buildSearchUrl(watch) {
     if (watch.search_url) {
-      return watch.search_url.replace('{keyword}', encodeURIComponent(watch.keyword));
+      return watch.search_url
+        .replace('/vyhledavani/', '/vyhladavanie/')
+        .replace('{keyword}', encodeURIComponent(watch.keyword));
     }
     const baseUrl = watch.store_url.replace(/\/+$/, '');
     const keyword = encodeURIComponent(watch.keyword);
@@ -215,6 +217,36 @@ class KeywordWatcher {
     const products = [];
     const seen = new Set();
     const baseUrl = (() => { try { return new URL(searchUrl).origin; } catch(e) { return ''; } })();
+    const blocklistedPathHints = ['/znacka/', '/tag/', '/vyhladavanie/', '/vyhledavani/', '/booster-', '/booster-balicky/', '/booster-boxy/', '/pokemon-produkty/', '/edicie/', '/kolekcie/', '/lorcana/', '/one-piece', '/spolocenske-hry/'];
+
+    const normalizeUrl = (href) => {
+      try {
+        const fullUrl = href.startsWith('http') ? href : `${baseUrl}${href.startsWith('/') ? '' : '/'}${href}`;
+        const u = new URL(fullUrl);
+        u.search = '';
+        return u.toString();
+      } catch (e) {
+        return href;
+      }
+    };
+
+    const isLikelyProductUrl = (href) => {
+      if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:')) return false;
+      const lowerHref = href.toLowerCase();
+      if (lowerHref.includes('/products/')) return true;
+      if (!lowerHref.startsWith('/') && !lowerHref.startsWith('http')) return false;
+      if (blocklistedPathHints.some(part => lowerHref.includes(part))) return false;
+      return /^\/[^/]+\/?$/.test(lowerHref) || /^https?:\/\/[^/]+\/[^/]+\/?$/.test(lowerHref);
+    };
+
+    const extractPrice = (container) => {
+      const priceEl = container.find('.price-final,.price-final-holder .price-final,.price-item,.money,.price,.product-price,[itemprop="price"]').first();
+      if (!priceEl.length) return null;
+      const pt = priceEl.text().replace(/[^0-9.,]/g, '').trim();
+      if (pt.match(/\d+[.,]\d{2}/)) return parseFloat(pt.replace(',', '.'));
+      if (pt.match(/^\d+$/)) return parseFloat(pt);
+      return null;
+    };
 
     const scrapePage = async (pageUrl) => {
       try {
@@ -226,14 +258,47 @@ class KeywordWatcher {
         const $ = cheerio.load(response.data);
         let pageProducts = 0;
 
+        // 1. Structured product cards (Shoptet + many generic stores)
+        $('.product, .p, [data-testid="productItem"], .products .product, .products-block .product').each((_, el) => {
+          const container = $(el);
+          const link = container.find('a.name, a.image, a[href]').filter((__, aEl) => isLikelyProductUrl($(aEl).attr('href') || '')).first();
+          const href = link.attr('href') || '';
+          if (!isLikelyProductUrl(href)) return;
+
+          const fullUrl = normalizeUrl(href);
+          if (seen.has(fullUrl)) return;
+
+          const name = container.find('.name, .top-products-name, [data-testid="productCardName"], [data-micro="name"], h3, h2').first().text().trim()
+            || link.attr('title')
+            || link.text().trim().replace(/\s+/g, ' ').substring(0, 150);
+
+          if (!name || !this.isRelevant(name, fullUrl, keyword)) return;
+
+          const text = container.text().toLowerCase();
+          const hasSoldOut = text.includes('sold out')
+            || text.includes('vypredané')
+            || text.includes('nie je skladom')
+            || container.find('.sold-out-badge,.badge--sold-out,[data-sold-out],.availability').text().toLowerCase().includes('vypredané');
+
+          const imageEl = container.find('img').first();
+          const image = imageEl.attr('src') || imageEl.attr('data-src') || '';
+
+          seen.add(fullUrl);
+          products.push({
+            name: name.substring(0, 200),
+            url: fullUrl,
+            price: extractPrice(container),
+            inStock: hasSoldOut ? false : undefined,
+            image: image.startsWith('//') ? 'https:' + image : image,
+          });
+          pageProducts++;
+        });
+
+        // 2. Shopify-style product links fallback
         $('a[href*="/products/"]').each((_, el) => {
           const href = $(el).attr('href') || '';
           if (!href.includes('/products/')) return;
-          let fullUrl = href;
-          try {
-            fullUrl = href.startsWith('http') ? href : `${baseUrl}${href.startsWith('/') ? '' : '/'}${href}`;
-            const u = new URL(fullUrl); u.search = ''; fullUrl = u.toString();
-          } catch(e) {}
+          const fullUrl = normalizeUrl(href);
           if (seen.has(fullUrl)) return;
 
           const name = $(el).attr('title')
@@ -247,15 +312,9 @@ class KeywordWatcher {
           const hasSoldOut = container.find('.sold-out-badge,.badge--sold-out,[data-sold-out]').length > 0
             || container.text().toLowerCase().includes('sold out');
 
-          const priceEl = container.find('.price-item,.money,.price,.product-price').first();
-          let price = null;
-          if (priceEl.length) {
-            const pt = priceEl.text().replace(/[^0-9.,]/g, '').trim();
-            if (pt.match(/\d+[.,]\d{2}/)) price = parseFloat(pt.replace(',', '.'));
-          }
           const imgEl = $(el).find('img').first();
           const image = imgEl.attr('src') || imgEl.attr('data-src') || '';
-          products.push({ name: name.substring(0, 200), url: fullUrl, price, inStock: hasSoldOut ? false : undefined, image: image.startsWith('//') ? 'https:' + image : image });
+          products.push({ name: name.substring(0, 200), url: fullUrl, price: extractPrice(container), inStock: hasSoldOut ? false : undefined, image: image.startsWith('//') ? 'https:' + image : image });
           pageProducts++;
         });
 
