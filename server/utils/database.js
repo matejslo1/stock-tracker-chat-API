@@ -1,6 +1,7 @@
 const initSqlJs = require('sql.js');
 const path = require('path');
 const fs = require('fs');
+const { detectStoreFromUrl, KNOWN_STORES } = require('./storeDetection');
 
 const DEFAULT_DB_PATH = path.join(__dirname, '..', 'data', 'tracker.db');
 const DB_PATH = process.env.DB_PATH || (fs.existsSync('/data') ? '/data/tracker.db' : DEFAULT_DB_PATH);
@@ -218,22 +219,15 @@ async function initDatabase() {
   try { db.run("ALTER TABLE keyword_watches ADD COLUMN max_price REAL DEFAULT NULL"); } catch(e) {}
 
   // Migration: fix products where store = hostname (e.g. 'tcgstar.eu') instead of valid store name
-  // Auto-upgrade to 'shopify' for any unknown store that has /products/ in URL (Shopify pattern)
+  // Auto-upgrade to the correct built-in store based on the URL/domain.
   try {
-    const validStores = ['amazon', 'bigbang', 'mimovrste', 'shopify', 'custom'];
+    const validStores = KNOWN_STORES; // ['amazon','bigbang','mimovrste','shopify','custom','tcgstar','pikazard','pokedom']
     const allProducts = db.exec("SELECT id, url, store FROM products");
     if (allProducts && allProducts[0]) {
       const rows = allProducts[0].values;
       for (const [id, url, store] of rows) {
         if (!validStores.includes(store)) {
-          let newStore = 'custom';
-          try {
-            const pathParts = new URL(url).pathname.split('/').filter(Boolean);
-            if (pathParts.includes('products')) newStore = 'shopify';
-            else if (url.includes('amazon')) newStore = 'amazon';
-            else if (url.includes('bigbang.si')) newStore = 'bigbang';
-            else if (url.includes('mimovrste.com')) newStore = 'mimovrste';
-          } catch(e) {}
+          const newStore = detectStoreFromUrl(url);
           db.run("UPDATE products SET store = ? WHERE id = ?", [newStore, id]);
           console.log(`🔧 Fixed store for product ${id}: '${store}' → '${newStore}'`);
         }
@@ -288,6 +282,43 @@ async function initDatabase() {
       config: JSON.stringify({ platform: 'shopify' })
     },
     {
+      name: 'tcgstar',
+      base_url: 'https://tcgstar.eu',
+      stock_selector: 'button[name="add"], .product-form__submit, form[action="/cart/add"] button[type="submit"], .shopify-payment-button',
+      price_selector: '.price-item--regular, .price__regular .price-item, .product__price, .price-item--sale, .price .money, .product-price',
+      add_to_cart: 'button[name="add"], .product-form__submit, form[action="/cart/add"] button[type="submit"]',
+      out_of_stock: 'ni na zalogi,sold out,out of stock,unavailable,razprodano',
+      in_stock: 'v kosharico,add to cart,dodaj v kosharico,buy now,v kosarico',
+      puppeteer: 0,
+      config: JSON.stringify({ platform: 'shopify', locale: 'sl' })
+    },
+    {
+      name: 'pokedom',
+      base_url: 'https://pokedom.eu',
+      stock_selector: 'button[name="add"], .product-form__submit, form[action="/cart/add"] button[type="submit"], .shopify-payment-button',
+      price_selector: '.hdt-price .money, .hdt-price__current, .price-item--regular, .price .money, .product-price',
+      add_to_cart: 'button[name="add"], .product-form__submit, form[action="/cart/add"] button[type="submit"]',
+      out_of_stock: 'sold out,out of stock,rasprodano,nije dostupno',
+      in_stock: 'add to cart,dodaj u kosaricu,dodaj u košaricu,kupi odmah',
+      puppeteer: 0,
+      config: JSON.stringify({ platform: 'shopify', locale: 'hr' })
+    },
+    {
+      // Pikazard.eu — Shoptet platform (Slovak), NOT Shopify
+      // Stock: .availability-label shows "Skladom" / "Nedostupné"
+      // Price: strong.price-final or .price-final-holder .price-final
+      // Cart: button.add-to-cart-button (class: "btn btn-lg btn-conversion add-to-cart-button")
+      name: 'pikazard',
+      base_url: 'https://www.pikazard.eu',
+      stock_selector: '.availability-label, .availability-value, .availability',
+      price_selector: 'strong.price-final, .price-final-holder .price-final, .price-final, [itemprop="price"]',
+      add_to_cart: 'button.add-to-cart-button, .btn-conversion.add-to-cart-button, .add-to-cart-button',
+      out_of_stock: 'vypredané,nie je skladom,nedostupné,na objednávku,nedostupný,dopyt',
+      in_stock: 'skladom,pridať do košíka,do košíka',
+      puppeteer: 0,
+      config: JSON.stringify({ platform: 'shoptet', search_url: '/vyhladavanie/?string={keyword}' })
+    },
+    {
       name: 'custom',
       base_url: '',
       stock_selector: '',
@@ -300,10 +331,14 @@ async function initDatabase() {
     }
   ];
 
+  // TCG-specific stores always get updated (OR REPLACE) so selector fixes are applied to existing DBs.
+  // Other stores use OR IGNORE to avoid overwriting user customisations.
+  const managedStores = ['tcgstar', 'pikazard', 'pokedom'];
   defaultStores.forEach(store => {
     try {
+      const verb = managedStores.includes(store.name) ? 'OR REPLACE' : 'OR IGNORE';
       db.run(
-        `INSERT OR IGNORE INTO store_configs (store_name, base_url, stock_selector, price_selector, add_to_cart_selector, out_of_stock_text, in_stock_text, requires_puppeteer, config_json)
+        `INSERT ${verb} INTO store_configs (store_name, base_url, stock_selector, price_selector, add_to_cart_selector, out_of_stock_text, in_stock_text, requires_puppeteer, config_json)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [store.name, store.base_url, store.stock_selector, store.price_selector,
          store.add_to_cart, store.out_of_stock, store.in_stock, store.puppeteer, store.config]

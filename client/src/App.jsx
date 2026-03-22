@@ -63,6 +63,9 @@ const StoreBadge = ({ store }) => {
     amazon: "bg-amber-100 text-amber-800 border-amber-200",
     bigbang: "bg-blue-100 text-blue-800 border-blue-200",
     mimovrste: "bg-purple-100 text-purple-800 border-purple-200",
+    tcgstar: "bg-emerald-100 text-emerald-800 border-emerald-200",
+    pikazard: "bg-sky-100 text-sky-800 border-sky-200",
+    pokedom: "bg-teal-100 text-teal-800 border-teal-200",
     shopify: "bg-green-100 text-green-800 border-green-200",
     custom: "bg-gray-100 text-gray-700 border-gray-200",
   };
@@ -866,7 +869,7 @@ const SettingsTab = ({ telegramSettings, telegramForm, setTelegramForm, savingTe
                     <button onClick={() => startEditStore(s)} className="p-1.5 rounded-lg hover:bg-gray-200 text-gray-400 hover:text-gray-700 transition-colors" title="Uredi">
                       <Edit3 size={14} />
                     </button>
-                    {!['amazon','bigbang','mimovrste','shopify','custom'].includes(s.store_name) && (
+                    {!['amazon','bigbang','mimovrste','shopify','tcgstar','pikazard','pokedom','custom'].includes(s.store_name) && (
                       <button onClick={async () => {
                         if (!confirm(`Izbriši trgovino "${s.store_name}"?`)) return;
                         await apiFetch(`/api/stores/${s.store_name}`, { method: 'DELETE' });

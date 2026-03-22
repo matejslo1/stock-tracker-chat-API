@@ -2,6 +2,7 @@ const http = require('../utils/http');
 const { validateAndNormalizeUrl } = require('../utils/urlSafety');
 const cheerio = require('cheerio');
 const db = require('../utils/database');
+const { detectStoreFromUrl } = require('../utils/storeDetection');
 
 class GenericScraper {
   constructor() {
@@ -15,6 +16,14 @@ class GenericScraper {
 
   getRandomUA() {
     return this.userAgents[Math.floor(Math.random() * this.userAgents.length)];
+  }
+
+  normalizeAssetUrl(rawUrl, baseUrl = null) {
+    if (!rawUrl) return null;
+    if (rawUrl.startsWith('//')) return `https:${rawUrl}`;
+    if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) return rawUrl;
+    if (!baseUrl) return rawUrl;
+    try { return new URL(rawUrl, baseUrl).href; } catch (e) { return rawUrl; }
   }
 
   async getBrowser() {
@@ -73,9 +82,10 @@ class GenericScraper {
       const $ = cheerio.load(html);
       const isShopify = html.includes('cdn.shopify.com') || html.includes('Shopify.theme') ||
                         html.includes('/cart/add') || storeConfig.store_name === 'shopify';
+      const isShoptet = html.includes('cdn.myshoptet.com') || html.includes('Shoptet') || storeConfig.store_name === 'pikazard';
 
       console.log(`  🔎 Scraping: ${url}`);
-      console.log(`  🏪 Platform: ${isShopify ? 'Shopify' : storeConfig.store_name}`);
+      console.log(`  🏪 Platform: ${isShopify ? 'Shopify' : isShoptet ? 'Shoptet' : storeConfig.store_name}`);
 
       // 1. Shopify product.js API — most reliable, try FIRST for any Shopify site
       let shopifyResult = { inStock: null, price: null, variantId: null };
@@ -104,6 +114,12 @@ class GenericScraper {
       const jsonLdResult = this.extractFromJsonLd($, html);
       console.log(`  📄 JSON-LD: inStock=${jsonLdResult.inStock}, price=${jsonLdResult.price}`);
 
+      // 2.5. Shoptet-specific extraction
+      const shoptetResult = isShoptet ? this.extractShoptetData($, url) : { inStock: null, price: null, imageUrl: null, rawStockText: '' };
+      if (isShoptet) {
+        console.log(`  🛒 Shoptet extra: inStock=${shoptetResult.inStock}, price=${shoptetResult.price}, raw="${shoptetResult.rawStockText}"`);
+      }
+
       // 3. CSS selector extraction
       const selectorResult = this.extractData($, storeConfig, url);
       console.log(`  🎯 Selectors: inStock=${selectorResult.inStock}, rawText="${selectorResult.rawStockText}"`);
@@ -113,13 +129,15 @@ class GenericScraper {
       const finalInStock =
         shopifyResult.inStock === true ? true :          // product.js says yes -> trust it
         jsonLdResult.inStock === true ? true :            // JSON-LD says yes -> trust it  
+        shoptetResult.inStock === true ? true :           // Shoptet availability says yes -> trust it
         selectorResult.inStock === true ? true :          // HTML selector says yes -> trust it
-        shopifyResult.inStock === false && jsonLdResult.inStock === null && selectorResult.inStock === null ? false : // only product.js voted, said no
+        shopifyResult.inStock === false && jsonLdResult.inStock === null && shoptetResult.inStock === null && selectorResult.inStock === null ? false : // only product.js voted, said no
         jsonLdResult.inStock !== null ? jsonLdResult.inStock :
+        shoptetResult.inStock !== null ? shoptetResult.inStock :
         selectorResult.inStock !== null ? selectorResult.inStock :
         false;
 
-      const finalPrice = shopifyResult.price || jsonLdResult.price || selectorResult.price;
+      const finalPrice = shopifyResult.price || jsonLdResult.price || shoptetResult.price || selectorResult.price;
       console.log(`  ✅ Final: inStock=${finalInStock}, price=${finalPrice}`);
 
       return {
@@ -128,8 +146,8 @@ class GenericScraper {
         isShopify,
         variantId: shopifyResult.variantId || null,
         stockQty: shopifyResult.stockQty || 0,
-        imageUrl: jsonLdResult.imageUrl || selectorResult.imageUrl,
-        rawStockText: selectorResult.rawStockText || (finalInStock !== null ? (finalInStock ? 'in stock' : 'out of stock') : ''),
+        imageUrl: shopifyResult.imageUrl || jsonLdResult.imageUrl || shoptetResult.imageUrl || selectorResult.imageUrl,
+        rawStockText: shoptetResult.rawStockText || selectorResult.rawStockText || (finalInStock !== null ? (finalInStock ? 'in stock' : 'out of stock') : ''),
       };
     } catch (error) {
       console.error(`  ❌ Cheerio scrape failed for ${url}:`, error.message);
@@ -220,7 +238,7 @@ class GenericScraper {
             result.stockQty = activeVariant.inventory_quantity || 0;
           }
           if (jsonRes.data.images && jsonRes.data.images.length > 0) {
-            result.imageUrl = jsonRes.data.images[0];
+            result.imageUrl = this.normalizeAssetUrl(jsonRes.data.images[0], urlObj.origin);
           }
           console.log(`  📦 Shopify product.js: ${variants.length} variants, anyAvailable=${anyAvailable}, top-level available=${jsonRes.data.available}, variantId=${result.variantId}`);
           return result;
@@ -390,7 +408,7 @@ class GenericScraper {
             }
             if (anyInStock !== null) result.inStock = anyInStock;
             if (bestPrice !== null) result.price = bestPrice;
-            if (product.image) result.imageUrl = Array.isArray(product.image) ? product.image[0] : product.image;
+            if (product.image) result.imageUrl = this.normalizeAssetUrl(Array.isArray(product.image) ? product.image[0] : product.image);
           }
         } catch (e) { /* ignore */ }
       });
@@ -400,7 +418,46 @@ class GenericScraper {
       const metaPrice = $('meta[property="og:price:amount"], meta[property="product:price:amount"]').attr('content');
       if (metaPrice) result.price = parseFloat(metaPrice);
     }
-    if (!result.imageUrl) result.imageUrl = $('meta[property="og:image"]').attr('content') || null;
+    if (!result.imageUrl) result.imageUrl = this.normalizeAssetUrl($('meta[property="og:image"]').attr('content')) || null;
+    return result;
+  }
+
+  extractShoptetData($, url) {
+    const result = { inStock: null, price: null, imageUrl: null, rawStockText: '' };
+
+    const availabilityText = [
+      $('.availability-value').first().text(),
+      $('.availability-label').first().text(),
+      $('.availability').first().text(),
+      $('.p-detail-inner').find('.availability').first().text(),
+    ].join(' ').replace(/\s+/g, ' ').trim().toLowerCase();
+
+    if (availabilityText) {
+      result.rawStockText = availabilityText;
+      if (/vypredan|nie je skladom|nedostupn|na objednavku|na objednávku/.test(availabilityText)) result.inStock = false;
+      else if (/skladom|na sklade|\(\s*\d+\s*ks\)/.test(availabilityText)) result.inStock = true;
+    }
+
+    const priceText = [
+      $('.p-final-price-wrapper .price-final').first().text(),
+      $('.p-price-wrapper .price-final').first().text(),
+      $('.p-detail-inner .price-final').first().text(),
+      $('.price-final').first().text(),
+    ].find(Boolean);
+    if (priceText) result.price = this.parsePrice(priceText);
+
+    const addToCartText = $('.add-to-cart-button, button[name="submit"], .btn-cart, .btn.btn-cart').first().text().replace(/\s+/g, ' ').trim().toLowerCase();
+    if (result.inStock === null && addToCartText) {
+      if (addToCartText.includes('do košíka') || addToCartText.includes('pridať do košíka')) result.inStock = true;
+      if (addToCartText.includes('vypredané') || addToCartText.includes('nedostupné')) result.inStock = false;
+    }
+
+    const ogImage = $('meta[property="og:image"]').attr('content');
+    if (ogImage) {
+      try { result.imageUrl = ogImage.startsWith('http') ? ogImage : new URL(ogImage, url).href; }
+      catch (e) { result.imageUrl = ogImage; }
+    }
+
     return result;
   }
 
@@ -472,19 +529,13 @@ class GenericScraper {
     // SSRF protection / URL validation
     const safeUrl = await validateAndNormalizeUrl(product.url, { requireHttps: false });
 
-    // Auto-detect Shopify store: if product is stored as 'custom' but URL looks like Shopify,
-    // upgrade to 'shopify' store config automatically
     let effectiveStore = product.store;
-    if (effectiveStore === 'custom' || effectiveStore === 'tcgstar.eu' || !['amazon','bigbang','mimovrste','shopify'].includes(effectiveStore)) {
-      // Check if URL has /products/ path (strong Shopify indicator)
-      try {
-        const urlObj = new URL(safeUrl);
-        const pathParts = urlObj.pathname.split('/').filter(Boolean);
-        if (pathParts.includes('products')) {
-          effectiveStore = 'shopify';
-          console.log(`  🔄 Auto-upgrading store to 'shopify' for: ${safeUrl}`);
-        }
-      } catch(e) {}
+
+    // Re-detect store from URL if the stored value is unknown/legacy (e.g. old 'tcgstar.eu' hostname)
+    const { KNOWN_STORES } = require('../utils/storeDetection');
+    if (!KNOWN_STORES.includes(effectiveStore)) {
+      effectiveStore = detectStoreFromUrl(safeUrl);
+      console.log(`  🔄 Re-detected store as '${effectiveStore}' for: ${safeUrl}`);
     }
 
     const storeConfig = db.prepare('SELECT * FROM store_configs WHERE store_name = ?').get(effectiveStore);

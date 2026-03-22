@@ -3,6 +3,7 @@ const { validateAndNormalizeUrl } = require('./urlSafety');
 const cheerio = require('cheerio');
 const db = require('./database');
 const telegram = require('./telegram');
+const { detectStoreFromUrl } = require('./storeDetection');
 
 class KeywordWatcher {
   constructor() {
@@ -49,6 +50,7 @@ class KeywordWatcher {
     if (hostname.includes('amazon')) return `${baseUrl}/s?k=${keyword}`;
     if (hostname.includes('bigbang')) return `${baseUrl}/iskanje?q=${keyword}`;
     if (hostname.includes('mimovrste')) return `${baseUrl}/iskanje?q=${keyword}`;
+    if (hostname.includes('pikazard.eu')) return `${baseUrl}/vyhladavanie/?string=${keyword}`;
     // Shopify stores: use options[prefix]=last for broader prefix matching
     return `${baseUrl}/search?options%5Bprefix%5D=last&q=${keyword}&type=product`;
   }
@@ -288,7 +290,8 @@ class KeywordWatcher {
   // ─── ORCHESTRATOR ───
   async scrapeSearchResults(searchUrl, storeName, keyword) {
     const baseUrl = (() => { try { return new URL(searchUrl).origin; } catch(e) { return ''; } })();
-    const isShopify = storeName === 'shopify';
+    // tcgstar and pokedom are Shopify-based stores and support the same product.js API
+    const isShopify = ['shopify', 'tcgstar', 'pokedom'].includes(storeName);
     const seen = new Set();
     const allProducts = [];
     // merge: first source wins for new URLs, BUT later sources can UPDATE price/stock if they have better data
@@ -381,8 +384,10 @@ class KeywordWatcher {
           try {
             const existing = db.prepare('SELECT id FROM products WHERE url = ?').get(product.url);
             if (!existing) {
-              const validStores = ['shopify', 'amazon', 'bigbang', 'mimovrste', 'custom'];
-              const productStore = validStores.includes(watch.store_name) ? watch.store_name : 'shopify';
+              const validStores = ['shopify', 'amazon', 'bigbang', 'mimovrste', 'pikazard', 'tcgstar', 'pokedom', 'custom'];
+              const productStore = validStores.includes(watch.store_name)
+                ? watch.store_name
+                : detectStoreFromUrl(product.url);
               let globalCheckInterval = 0;
               try {
                 const row = db.prepare("SELECT value FROM app_settings WHERE key = 'check_interval_minutes'").get();

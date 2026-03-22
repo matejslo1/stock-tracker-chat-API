@@ -1,4 +1,5 @@
 const TelegramBot = require('node-telegram-bot-api');
+const { detectStoreFromUrl } = require('./storeDetection');
 
 class TelegramService {
   constructor() {
@@ -288,12 +289,7 @@ class TelegramService {
         if (existing) { this.bot.sendMessage(msg.chat.id, `⚠️ URL je že v sledenju (ID: \`${existing.id}\`)`, { parse_mode: 'Markdown' }); return; }
         let name = '';
         try { const u = new URL(url); const parts = u.pathname.split('/').filter(Boolean); name = (parts[parts.length - 1] || u.hostname).replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).substring(0, 100); } catch(e) { name = 'Nov izdelek'; }
-        const hostname = (() => { try { return new URL(url).hostname; } catch(e) { return ''; } })();
-        let store = 'custom';
-        if (hostname.includes('shopify') || hostname.includes('tcgstar')) store = 'shopify';
-        else if (hostname.includes('amazon')) store = 'amazon';
-        else if (hostname.includes('bigbang')) store = 'bigbang';
-        else if (hostname.includes('mimovrste')) store = 'mimovrste';
+        const store = detectStoreFromUrl(url);
         const result = db.prepare('INSERT INTO products (name, url, store, notify_on_stock, notify_on_price_drop) VALUES (?, ?, ?, 1, 1)').run(name, url, store);
         const newProduct = db.prepare('SELECT * FROM products WHERE id = ?').get(result.lastInsertRowid);
         await this.bot.sendMessage(msg.chat.id, `✅ *Dodano!*\n\n📦 *${name}*\n🏪 ${store} | ID: \`${result.lastInsertRowid}\`\n\nPreverjam zalogo...`, { parse_mode: 'Markdown' });

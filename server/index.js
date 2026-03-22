@@ -11,6 +11,7 @@ const keywordWatcher = require("./utils/keyword-watcher");
 const telegram = require("./utils/telegram");
 const scraper = require("./scrapers/generic");
 const { buildCartUrl, buildCartUrlForProducts } = require("./utils/shopify-cart");
+const { detectStoreFromUrl } = require("./utils/storeDetection");
 
 
 // Cron scheduling (global stock check) with dynamic interval from app_settings
@@ -179,7 +180,7 @@ app.post("/api/stores", (req, res) => {
 
 app.delete("/api/stores/:name", (req, res) => {
   try {
-    const builtIn = ['amazon','bigbang','mimovrste','shopify','custom'];
+    const builtIn = ['amazon','bigbang','mimovrste','shopify','tcgstar','pikazard','pokedom','custom'];
     if (builtIn.includes(req.params.name)) return res.status(400).json({ error: "Ne moreš izbrisati privzetih trgovin" });
     db.prepare("DELETE FROM store_configs WHERE store_name = ?").run(req.params.name);
     res.json({ ok: true });
@@ -277,20 +278,17 @@ app.post("/api/analyze-url", async (req, res) => {
     const { url } = req.body;
     if (!url) return res.status(400).json({ error: "url required" });
 
-    const hostname = new URL(url).hostname;
-    let detectedStore = "custom";
-    if (hostname.includes("amazon")) detectedStore = "amazon";
-    else if (hostname.includes("bigbang")) detectedStore = "bigbang";
-    else if (hostname.includes("mimovrste")) detectedStore = "mimovrste";
+    let detectedStore = detectStoreFromUrl(url);
 
     // Try Shopify detection
-    const storeConfig = db.prepare("SELECT * FROM store_configs WHERE store_name = ?").get(detectedStore === "custom" ? "shopify" : detectedStore);
-    const fakeProduct = { id: 0, url, store: detectedStore === "custom" ? "shopify" : detectedStore, name: "" };
+    const scraperStore = detectedStore === "custom" ? "shopify" : detectedStore;
+    const storeConfig = db.prepare("SELECT * FROM store_configs WHERE store_name = ?").get(scraperStore);
+    const fakeProduct = { id: 0, url, store: scraperStore, name: "" };
 
     let result = null;
     try { result = await scraper.scrape(fakeProduct); } catch(e) {}
 
-    if (result && result.isShopify) detectedStore = "shopify";
+    if (result && result.isShopify && detectedStore === "custom") detectedStore = "shopify";
 
     // Detect if URL is a collections page and suggest canonical product URL
     let canonicalUrl = url;
