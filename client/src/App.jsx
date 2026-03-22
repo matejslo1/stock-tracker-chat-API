@@ -139,13 +139,26 @@ const Toggle = ({ checked, onChange, color = "#10b981" }) => (
 const ProductCard = ({ product, onCheck, onDelete, onEdit, checking, selected, onSelect }) => {
   const [expanded, setExpanded] = useState(false);
   const displayStore = detectStoreFromProduct(product);
+  const cardTone = product.is_preorder
+    ? "border-amber-200 shadow-amber-100/50 shadow-lg"
+    : product.in_stock
+      ? "border-emerald-200 shadow-emerald-100/50 shadow-lg"
+      : "border-red-200 shadow-red-100/50 shadow-lg";
   return (
     <div onClick={onSelect ? (e) => { if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'A' && e.target.tagName !== 'INPUT') onSelect(); } : undefined}
       className={cn("group relative bg-white rounded-2xl border transition-all duration-300 overflow-hidden",
-        product.in_stock ? "border-emerald-200 shadow-emerald-100/50 shadow-lg" : "border-gray-200 shadow-sm hover:shadow-md",
+        cardTone,
+        !product.in_stock && !product.is_preorder && "hover:shadow-md",
         selected ? "ring-2 ring-gray-900" : "",
         onSelect ? "cursor-pointer" : "")}>
-      {product.in_stock && <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-400" />}
+      {(product.in_stock || product.is_preorder) && (
+        <div className={cn(
+          "absolute top-0 left-0 right-0 h-1",
+          product.is_preorder
+            ? "bg-gradient-to-r from-amber-300 via-amber-400 to-orange-400"
+            : "bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-400"
+        )} />
+      )}
       <div className="p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
