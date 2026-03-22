@@ -107,15 +107,17 @@ const StoreBrandBadge = ({ store }) => {
       chip: "bg-emerald-50 text-emerald-800 border-emerald-200",
       markBg: "bg-emerald-500 text-white",
       logo: "/store-logos/tcgstar.svg",
-      logoShell: "bg-emerald-700 border border-emerald-800 px-2 py-1"
+      logoShell: "bg-black border border-black px-2 py-1",
+      logoClass: "h-4"
     },
     pikazard: {
       label: "Pikazard",
       mark: "P",
       chip: "bg-sky-50 text-sky-800 border-sky-200",
       markBg: "bg-sky-500 text-white",
-      logo: "/store-logos/pikazard.svg",
-      logoShell: "bg-white border border-sky-200 px-1.5 py-1"
+      logo: "/store-logos/pikazard.png",
+      logoShell: "bg-white border border-sky-200 px-1 py-0.5",
+      logoClass: "h-5"
     },
     pokedom: {
       label: "PokeDom",
@@ -123,7 +125,8 @@ const StoreBrandBadge = ({ store }) => {
       chip: "bg-teal-50 text-teal-800 border-teal-200",
       markBg: "bg-teal-500 text-white",
       logo: "/store-logos/pokedom.png",
-      logoShell: "bg-white border border-teal-200 px-1.5 py-1"
+      logoShell: "bg-white border border-teal-200 px-1.5 py-1",
+      logoClass: "h-4"
     },
     custom: { label: "Custom", mark: "C", chip: "bg-gray-50 text-gray-700 border-gray-200", markBg: "bg-gray-500 text-white" },
   };
@@ -133,7 +136,7 @@ const StoreBrandBadge = ({ store }) => {
     <span className={cn("inline-flex items-center gap-2 px-2.5 py-1 rounded-full border text-xs font-bold", brand.chip)}>
       {brand.logo ? (
         <span className={cn("inline-flex items-center justify-center rounded-full overflow-hidden shrink-0", brand.logoShell || "bg-white border border-gray-200 px-1.5 py-1")}>
-          <img src={brand.logo} alt={`${brand.label} logo`} className="block h-4 w-auto object-contain" />
+          <img src={brand.logo} alt={`${brand.label} logo`} className={cn("block w-auto object-contain", brand.logoClass || "h-4")} />
         </span>
       ) : (
         <span className={cn("inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] leading-none font-black", brand.markBg)}>
