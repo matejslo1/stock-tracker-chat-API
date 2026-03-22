@@ -42,9 +42,15 @@ class KeywordWatcher {
 
   buildSearchUrl(watch) {
     if (watch.search_url) {
-      return watch.search_url
+      const raw = watch.search_url
         .replace('/vyhledavani/', '/vyhladavanie/')
         .replace('{keyword}', encodeURIComponent(watch.keyword));
+      if (raw.startsWith('http')) return raw;
+      try {
+        return new URL(raw, watch.store_url).toString();
+      } catch (e) {
+        return raw;
+      }
     }
     const baseUrl = watch.store_url.replace(/\/+$/, '');
     const keyword = encodeURIComponent(watch.keyword);
@@ -256,10 +262,13 @@ class KeywordWatcher {
           timeout: 20000, maxRedirects: 5,
         });
         const $ = cheerio.load(response.data);
+        const resultRoot = $('.search-results').first().length
+          ? $('.search-results').first()
+          : ($('#content .products-block').first().length ? $('#content .products-block').first() : $.root());
         let pageProducts = 0;
 
         // 1. Structured product cards (Shoptet + many generic stores)
-        $('.product, .p, [data-testid="productItem"], .products .product, .products-block .product').each((_, el) => {
+        resultRoot.find('.product, .p, [data-testid="productItem"], .products .product, .products-block .product').each((_, el) => {
           const container = $(el);
           const link = container.find('a.name, a.image, a[href]').filter((__, aEl) => isLikelyProductUrl($(aEl).attr('href') || '')).first();
           const href = link.attr('href') || '';

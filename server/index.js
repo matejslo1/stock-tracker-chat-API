@@ -385,18 +385,19 @@ app.post("/api/keyword-watches", async (req, res) => {
     try { db.prepare("ALTER TABLE keyword_watches ADD COLUMN min_price REAL DEFAULT NULL").run(); } catch(e) {}
     try { db.prepare("ALTER TABLE keyword_watches ADD COLUMN max_price REAL DEFAULT NULL").run(); } catch(e) {}
 
-    const detectStoreName = (url) => {
-      if (url.includes("amazon")) return "amazon";
-      if (url.includes("bigbang.si")) return "bigbang";
-      if (url.includes("mimovrste.com")) return "mimovrste";
-      return "shopify";
-    };
-    const storeName = detectStoreName(store_url);
+    const normalizedStoreUrl = new URL(store_url).toString();
+    const normalizedSearchUrl = (() => {
+      if (!search_url) return null;
+      const raw = String(search_url).trim();
+      if (!raw) return null;
+      return raw.startsWith("http") ? raw : new URL(raw, normalizedStoreUrl).toString();
+    })();
+    const storeName = detectStoreFromUrl(normalizedStoreUrl);
 
     const result = db.prepare(
       `INSERT INTO keyword_watches (keyword, store_url, store_name, search_url, notify_new_products, notify_in_stock, auto_add_tracking, check_interval_minutes, min_price, max_price)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(keyword, store_url, storeName, search_url || null,
+    ).run(keyword, normalizedStoreUrl, storeName, normalizedSearchUrl,
       notify_new_products !== false ? 1 : 0,
       notify_in_stock !== false ? 1 : 0,
       auto_add_tracking ? 1 : 0,
@@ -414,16 +415,17 @@ app.post("/api/keyword-watches", async (req, res) => {
 app.put("/api/keyword-watches/:id", async (req, res) => {
   try {
     const { keyword, store_url, search_url, notify_new_products, notify_in_stock, auto_add_tracking, check_interval_minutes, min_price, max_price } = req.body;
-    const detectStoreName = (url) => {
-      if (url.includes("amazon")) return "amazon";
-      if (url.includes("bigbang.si")) return "bigbang";
-      if (url.includes("mimovrste.com")) return "mimovrste";
-      return "shopify";
-    };
-    const storeName = detectStoreName(store_url);
+    const normalizedStoreUrl = new URL(store_url).toString();
+    const normalizedSearchUrl = (() => {
+      if (!search_url) return null;
+      const raw = String(search_url).trim();
+      if (!raw) return null;
+      return raw.startsWith("http") ? raw : new URL(raw, normalizedStoreUrl).toString();
+    })();
+    const storeName = detectStoreFromUrl(normalizedStoreUrl);
     db.prepare(
       `UPDATE keyword_watches SET keyword=?, store_url=?, store_name=?, search_url=?, notify_new_products=?, notify_in_stock=?, auto_add_tracking=?, check_interval_minutes=?, min_price=?, max_price=?, updated_at=datetime('now') WHERE id=?`
-    ).run(keyword, store_url, storeName, search_url || null,
+    ).run(keyword, normalizedStoreUrl, storeName, normalizedSearchUrl,
       notify_new_products ? 1 : 0, notify_in_stock ? 1 : 0, auto_add_tracking ? 1 : 0,
       parseInt(check_interval_minutes) || 0,
       min_price ? parseFloat(min_price) : null,
