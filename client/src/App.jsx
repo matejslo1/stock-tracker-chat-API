@@ -101,18 +101,45 @@ const StoreBrandBadge = ({ store }) => {
     bigbang: { label: "Big Bang", mark: "B", chip: "bg-blue-50 text-blue-800 border-blue-200", markBg: "bg-blue-500 text-white" },
     mimovrste: { label: "Mimovrste", mark: "M", chip: "bg-purple-50 text-purple-800 border-purple-200", markBg: "bg-purple-500 text-white" },
     shopify: { label: "Shopify", mark: "S", chip: "bg-green-50 text-green-800 border-green-200", markBg: "bg-green-500 text-white" },
-    tcgstar: { label: "TCGStar", mark: "T", chip: "bg-emerald-50 text-emerald-800 border-emerald-200", markBg: "bg-emerald-500 text-white" },
-    pikazard: { label: "Pikazard", mark: "P", chip: "bg-sky-50 text-sky-800 border-sky-200", markBg: "bg-sky-500 text-white" },
-    pokedom: { label: "PokeDom", mark: "P", chip: "bg-teal-50 text-teal-800 border-teal-200", markBg: "bg-teal-500 text-white" },
+    tcgstar: {
+      label: "TCGStar",
+      mark: "T",
+      chip: "bg-emerald-50 text-emerald-800 border-emerald-200",
+      markBg: "bg-emerald-500 text-white",
+      logo: "/store-logos/tcgstar.svg",
+      logoShell: "bg-emerald-700 border border-emerald-800 px-2 py-1"
+    },
+    pikazard: {
+      label: "Pikazard",
+      mark: "P",
+      chip: "bg-sky-50 text-sky-800 border-sky-200",
+      markBg: "bg-sky-500 text-white",
+      logo: "/store-logos/pikazard.svg",
+      logoShell: "bg-white border border-sky-200 px-1.5 py-1"
+    },
+    pokedom: {
+      label: "PokeDom",
+      mark: "P",
+      chip: "bg-teal-50 text-teal-800 border-teal-200",
+      markBg: "bg-teal-500 text-white",
+      logo: "/store-logos/pokedom.png",
+      logoShell: "bg-white border border-teal-200 px-1.5 py-1"
+    },
     custom: { label: "Custom", mark: "C", chip: "bg-gray-50 text-gray-700 border-gray-200", markBg: "bg-gray-500 text-white" },
   };
   const brand = brands[store] || brands.custom;
 
   return (
     <span className={cn("inline-flex items-center gap-2 px-2.5 py-1 rounded-full border text-xs font-bold", brand.chip)}>
-      <span className={cn("inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] leading-none font-black", brand.markBg)}>
-        {brand.mark}
-      </span>
+      {brand.logo ? (
+        <span className={cn("inline-flex items-center justify-center rounded-full overflow-hidden shrink-0", brand.logoShell || "bg-white border border-gray-200 px-1.5 py-1")}>
+          <img src={brand.logo} alt={`${brand.label} logo`} className="block h-4 w-auto object-contain" />
+        </span>
+      ) : (
+        <span className={cn("inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] leading-none font-black", brand.markBg)}>
+          {brand.mark}
+        </span>
+      )}
       {brand.label}
     </span>
   );
