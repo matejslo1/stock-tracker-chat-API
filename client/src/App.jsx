@@ -76,6 +76,29 @@ const StoreBadge = ({ store }) => {
   );
 };
 
+const StoreBrandBadge = ({ store }) => {
+  const brands = {
+    amazon: { label: "Amazon", mark: "A", chip: "bg-amber-50 text-amber-800 border-amber-200", markBg: "bg-amber-500 text-white" },
+    bigbang: { label: "Big Bang", mark: "B", chip: "bg-blue-50 text-blue-800 border-blue-200", markBg: "bg-blue-500 text-white" },
+    mimovrste: { label: "Mimovrste", mark: "M", chip: "bg-purple-50 text-purple-800 border-purple-200", markBg: "bg-purple-500 text-white" },
+    shopify: { label: "Shopify", mark: "S", chip: "bg-green-50 text-green-800 border-green-200", markBg: "bg-green-500 text-white" },
+    tcgstar: { label: "TCGStar", mark: "T", chip: "bg-emerald-50 text-emerald-800 border-emerald-200", markBg: "bg-emerald-500 text-white" },
+    pikazard: { label: "Pikazard", mark: "P", chip: "bg-sky-50 text-sky-800 border-sky-200", markBg: "bg-sky-500 text-white" },
+    pokedom: { label: "PokeDom", mark: "P", chip: "bg-teal-50 text-teal-800 border-teal-200", markBg: "bg-teal-500 text-white" },
+    custom: { label: "Custom", mark: "C", chip: "bg-gray-50 text-gray-700 border-gray-200", markBg: "bg-gray-500 text-white" },
+  };
+  const brand = brands[store] || brands.custom;
+
+  return (
+    <span className={cn("inline-flex items-center gap-2 px-2.5 py-1 rounded-full border text-xs font-bold", brand.chip)}>
+      <span className={cn("inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] leading-none font-black", brand.markBg)}>
+        {brand.mark}
+      </span>
+      {brand.label}
+    </span>
+  );
+};
+
 const StockBadge = ({ inStock }) => (
   <span className={cn("inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full",
     inStock ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-red-50 text-red-600 border border-red-200")}>
@@ -115,6 +138,7 @@ const ProductCard = ({ product, onCheck, onDelete, onEdit, checking, selected, o
               </div>
             )}
             <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <StoreBrandBadge store={product.store} />
               <StoreBadge store={product.store} />
               <StockBadge inStock={product.in_stock} />
               {product.auto_purchase === 1 && (
