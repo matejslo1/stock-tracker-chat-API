@@ -1350,6 +1350,17 @@ export default function StockTracker() {
 
   const inStockCount = products.filter(p => p.in_stock).length;
   const activeWatchCount = keywordWatches.filter(w => w.active).length + categoryWatches.filter(w => w.active).length;
+  const storeCounts = products.reduce((acc, product) => {
+    acc[product.store] = (acc[product.store] || 0) + 1;
+    return acc;
+  }, {});
+  const quickStoreFilters = [
+    { value: "all", label: "Vse", count: products.length },
+    { value: "pikazard", label: "Pikazard", count: storeCounts.pikazard || 0 },
+    { value: "pokedom", label: "PokeDom", count: storeCounts.pokedom || 0 },
+    { value: "tcgstar", label: "TCGStar", count: storeCounts.tcgstar || 0 },
+  ].filter(filter => filter.value === "all" || filter.count > 0);
+  const extraStores = [...new Set(products.map(p => p.store))].filter(store => !quickStoreFilters.some(filter => filter.value === store));
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1542,13 +1553,24 @@ export default function StockTracker() {
                       </button>
                     ))}
                   </div>
-                  <select value={filterStore} onChange={e => { setFilterStore(e.target.value); setSelectedIds(new Set()); }}
-                    className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-semibold bg-white text-gray-700 outline-none cursor-pointer">
-                    <option value="all">Vse trgovine</option>
-                    {[...new Set(products.map(p => p.store))].map(s => (
-                      <option key={s} value={s}>{s}</option>
+                  <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 overflow-x-auto">
+                    {quickStoreFilters.map(filter => (
+                      <button key={filter.value} onClick={() => { setFilterStore(filter.value); setSelectedIds(new Set()); }}
+                        className={cn("px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap",
+                          filterStore === filter.value ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700")}>
+                        {filter.label} ({filter.count})
+                      </button>
                     ))}
-                  </select>
+                  </div>
+                  {extraStores.length > 0 && (
+                    <select value={filterStore} onChange={e => { setFilterStore(e.target.value); setSelectedIds(new Set()); }}
+                      className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-semibold bg-white text-gray-700 outline-none cursor-pointer">
+                      <option value="all">Vse trgovine</option>
+                      {extraStores.map(store => (
+                        <option key={store} value={store}>{store}</option>
+                      ))}
+                    </select>
+                  )}
                   {selectedIds.size > 0 && (
                     <button onClick={handleBulkDelete}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs font-bold transition-colors ml-auto">
