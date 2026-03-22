@@ -47,6 +47,14 @@ const hostnameFromUrl = (url) => {
   }
 };
 
+const detectStoreFromProduct = (product) => {
+  const hostname = hostnameFromUrl(product?.url || "").toLowerCase();
+  if (hostname.includes("pikazard.eu")) return "pikazard";
+  if (hostname.includes("pokedom.eu")) return "pokedom";
+  if (hostname.includes("tcgstar.eu")) return "tcgstar";
+  return product?.store || "custom";
+};
+
 const Toast = ({ message, type, onClose }) => {
   useEffect(() => { const t = setTimeout(onClose, 4000); return () => clearTimeout(t); }, [onClose]);
   const colors = { success: "bg-emerald-500", error: "bg-red-500", info: "bg-blue-500", warning: "bg-amber-500" };
@@ -130,6 +138,7 @@ const Toggle = ({ checked, onChange, color = "#10b981" }) => (
 // Product Card
 const ProductCard = ({ product, onCheck, onDelete, onEdit, checking, selected, onSelect }) => {
   const [expanded, setExpanded] = useState(false);
+  const displayStore = detectStoreFromProduct(product);
   return (
     <div onClick={onSelect ? (e) => { if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'A' && e.target.tagName !== 'INPUT') onSelect(); } : undefined}
       className={cn("group relative bg-white rounded-2xl border transition-all duration-300 overflow-hidden",
@@ -148,8 +157,8 @@ const ProductCard = ({ product, onCheck, onDelete, onEdit, checking, selected, o
               </div>
             )}
             <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <StoreBrandBadge store={product.store} />
-              <StoreBadge store={product.store} />
+              <StoreBrandBadge store={displayStore} />
+              <StoreBadge store={displayStore} />
               <StockBadge inStock={product.in_stock} isPreorder={product.is_preorder} />
               {product.auto_purchase === 1 && (
                 <span className="text-xs bg-orange-100 text-orange-700 border border-orange-200 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
@@ -1351,7 +1360,8 @@ export default function StockTracker() {
   const inStockCount = products.filter(p => p.in_stock).length;
   const activeWatchCount = keywordWatches.filter(w => w.active).length + categoryWatches.filter(w => w.active).length;
   const storeCounts = products.reduce((acc, product) => {
-    acc[product.store] = (acc[product.store] || 0) + 1;
+    const store = detectStoreFromProduct(product);
+    acc[store] = (acc[store] || 0) + 1;
     return acc;
   }, {});
   const quickStoreFilters = [
@@ -1360,8 +1370,6 @@ export default function StockTracker() {
     { value: "pokedom", label: "pokedom", count: storeCounts.pokedom || 0 },
     { value: "tcgstar", label: "tcgstar", count: storeCounts.tcgstar || 0 },
   ];
-  const extraStores = [...new Set(products.map(p => p.store))].filter(store => !quickStoreFilters.some(filter => filter.value === store));
-
   return (
     <div className="min-h-screen bg-gray-50">
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
@@ -1544,33 +1552,35 @@ export default function StockTracker() {
 
                 {/* Filter bar */}
                 <div className="flex flex-wrap items-center gap-2 mb-4 pb-4 border-b border-gray-100">
-                  <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
-                    {[["all","Vsi"],["in_stock","Na zalogi"],["out_of_stock","Ni na zalogi"]].map(([val,label]) => (
-                      <button key={val} onClick={() => { setFilterStock(val); setSelectedIds(new Set()); }}
-                        className={cn("px-3 py-1.5 rounded-lg text-xs font-semibold transition-all",
-                          filterStock === val ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700")}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 overflow-x-auto">
-                    {quickStoreFilters.map(filter => (
-                      <button key={filter.value} onClick={() => { setFilterStore(filter.value); setSelectedIds(new Set()); }}
-                        className={cn("px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap",
-                          filterStore === filter.value ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700")}>
-                        {filter.label} ({filter.count})
-                      </button>
-                    ))}
-                  </div>
-                  {extraStores.length > 0 && (
-                    <select value={filterStore} onChange={e => { setFilterStore(e.target.value); setSelectedIds(new Set()); }}
-                      className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-semibold bg-white text-gray-700 outline-none cursor-pointer">
-                      <option value="all">Vse trgovine</option>
-                      {extraStores.map(store => (
-                        <option key={store} value={store}>{store}</option>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Status</span>
+                    <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+                      {[["all","Vsi"],["in_stock","Na zalogi"],["out_of_stock","Ni na zalogi"]].map(([val,label]) => (
+                        <button key={val} onClick={() => { setFilterStock(val); setSelectedIds(new Set()); }}
+                          className={cn("px-3 py-1.5 rounded-lg text-xs font-semibold transition-all",
+                            filterStock === val ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700")}>
+                          {label}
+                        </button>
                       ))}
-                    </select>
-                  )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Trgovina</span>
+                    <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 overflow-x-auto">
+                      {quickStoreFilters.map(filter => {
+                        const disabled = filter.value !== "all" && filter.count === 0;
+                        return (
+                          <button key={filter.value} onClick={() => { if (!disabled) { setFilterStore(filter.value); setSelectedIds(new Set()); } }}
+                            disabled={disabled}
+                            className={cn("px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap",
+                              filterStore === filter.value ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700",
+                              disabled && "opacity-45 cursor-not-allowed hover:text-gray-500")}>
+                            {filter.label} ({filter.count})
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                   {selectedIds.size > 0 && (
                     <button onClick={handleBulkDelete}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs font-bold transition-colors ml-auto">
@@ -1582,7 +1592,7 @@ export default function StockTracker() {
                 {(() => {
                   const filtered = products.filter(p => {
                     const stockOk = filterStock === "all" || (filterStock === "in_stock" ? p.in_stock : !p.in_stock);
-                    const storeOk = filterStore === "all" || p.store === filterStore;
+                    const storeOk = filterStore === "all" || detectStoreFromProduct(p) === filterStore;
                     return stockOk && storeOk;
                   });
                   const allFilteredSelected = filtered.length > 0 && filtered.every(p => selectedIds.has(p.id));
