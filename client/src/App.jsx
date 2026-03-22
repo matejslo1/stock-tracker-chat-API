@@ -99,13 +99,23 @@ const StoreBrandBadge = ({ store }) => {
   );
 };
 
-const StockBadge = ({ inStock }) => (
-  <span className={cn("inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full",
-    inStock ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-red-50 text-red-600 border border-red-200")}>
-    <span className={cn("w-2 h-2 rounded-full", inStock ? "bg-emerald-500 animate-pulse" : "bg-red-400")} />
-    {inStock ? "Na zalogi" : "Ni na zalogi"}
-  </span>
-);
+const StockBadge = ({ inStock, isPreorder }) => {
+  if (isPreorder) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+        <span className="w-2 h-2 rounded-full bg-amber-500" />
+        Prednaročilo
+      </span>
+    );
+  }
+  return (
+    <span className={cn("inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full",
+      inStock ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-red-50 text-red-600 border border-red-200")}>
+      <span className={cn("w-2 h-2 rounded-full", inStock ? "bg-emerald-500 animate-pulse" : "bg-red-400")} />
+      {inStock ? "Na zalogi" : "Ni na zalogi"}
+    </span>
+  );
+};
 
 // Toggle component
 const Toggle = ({ checked, onChange, color = "#10b981" }) => (
@@ -140,7 +150,7 @@ const ProductCard = ({ product, onCheck, onDelete, onEdit, checking, selected, o
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <StoreBrandBadge store={product.store} />
               <StoreBadge store={product.store} />
-              <StockBadge inStock={product.in_stock} />
+              <StockBadge inStock={product.in_stock} isPreorder={product.is_preorder} />
               {product.auto_purchase === 1 && (
                 <span className="text-xs bg-orange-100 text-orange-700 border border-orange-200 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
                   <Zap size={10} /> Auto
@@ -242,6 +252,7 @@ const ProductModal = ({ product, stores, onSave, onClose, appSettings }) => {
       setAnalyzeResult({ 
         price: data.detected_price, 
         inStock: data.detected_in_stock, 
+        isPreorder: data.detected_is_preorder,
         store: data.detected_store, 
         image: data.detected_image,
         isCollectionsUrl: data.is_collections_url,
@@ -297,7 +308,8 @@ const ProductModal = ({ product, stores, onSave, onClose, appSettings }) => {
               {!analyzeResult.isCollectionsUrl && <div className="font-semibold text-emerald-800">✅ Zaznano:</div>}
               <div className={analyzeResult.isCollectionsUrl ? "text-amber-700" : "text-emerald-700"}>🏪 Platforma: <strong>{analyzeResult.store}</strong></div>
               {analyzeResult.price && <div className={analyzeResult.isCollectionsUrl ? "text-amber-700" : "text-emerald-700"}>💰 Cena: <strong>{analyzeResult.price?.toFixed(2)} EUR</strong></div>}
-              {analyzeResult.inStock !== null && <div className={analyzeResult.isCollectionsUrl ? "text-amber-700" : "text-emerald-700"}>📦 Zaloga: <strong>{analyzeResult.inStock ? "✅ Na zalogi" : "❌ Ni na zalogi"}</strong></div>}
+              {analyzeResult.isPreorder && <div className={analyzeResult.isCollectionsUrl ? "text-amber-700" : "text-amber-700"}>📦 Status: <strong>🟡 Prednaročilo</strong></div>}
+              {!analyzeResult.isPreorder && analyzeResult.inStock !== null && <div className={analyzeResult.isCollectionsUrl ? "text-amber-700" : "text-emerald-700"}>📦 Zaloga: <strong>{analyzeResult.inStock ? "✅ Na zalogi" : "❌ Ni na zalogi"}</strong></div>}
               {analyzeResult.canonicalUrl && (
                 <div className="mt-2 pt-2 border-t border-amber-200 text-amber-800 text-xs">
                   ✅ URL je bil samodejno posodobljen na: <code className="bg-amber-100 px-1 rounded">{analyzeResult.canonicalUrl}</code>
@@ -497,6 +509,99 @@ const KeywordModal = ({ watch, onSave, onClose, appSettings }) => {
           <button onClick={handleSubmit} disabled={!form.keyword || !form.store_url}
             className="px-6 py-2.5 text-sm font-bold text-white bg-gray-900 hover:bg-gray-800 rounded-xl transition-colors disabled:opacity-40 flex items-center gap-2">
             <Check size={16} /> {watch ? "Shrani" : "Dodaj iskanje"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const CategoryModal = ({ watch, onSave, onClose, appSettings }) => {
+  const globalInterval = appSettings?.check_interval_minutes || 5;
+  const [form, setForm] = useState({
+    category_name: watch?.category_name || "",
+    category_url: watch?.category_url || "",
+    notify_new_products: watch ? watch.notify_new_products !== 0 : true,
+    auto_add_tracking: watch ? watch.auto_add_tracking === 1 : false,
+    check_interval_minutes: watch?.check_interval_minutes != null ? String(watch.check_interval_minutes) : "0",
+    min_price: watch?.min_price != null ? String(watch.min_price) : "",
+    max_price: watch?.max_price != null ? String(watch.max_price) : "",
+  });
+
+  const handleSubmit = () => {
+    if (!form.category_url) return;
+    onSave(form);
+  };
+
+  const toggleFields = [
+    { key: "notify_new_products", icon: <Bell size={16} />, label: "Obvesti ob novih izdelkih", color: "#10b981" },
+    { key: "auto_add_tracking", icon: <Zap size={16} />, label: "Avtomatsko dodaj v sledenje", color: "#f97316" },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+        <div className="p-6 border-b border-gray-100">
+          <h2 className="text-xl font-bold text-gray-900">{watch ? "Uredi kategorijo" : "Novo spremljanje kategorije"}</h2>
+          <p className="text-sm text-gray-500 mt-1">Spremljaj collection ali category URL za nove izdelke</p>
+        </div>
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="text-sm font-semibold text-gray-700 mb-1 block">Ime kategorije (opcijsko)</label>
+            <input type="text" value={form.category_name} onChange={e => setForm(f => ({ ...f, category_name: e.target.value }))}
+              placeholder="npr. Premium Collection"
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all" />
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-gray-700 mb-1 block">URL kategorije *</label>
+            <input type="text" value={form.category_url} onChange={e => setForm(f => ({ ...f, category_url: e.target.value }))}
+              placeholder="https://www.pikazard.eu/en/premium-collection/"
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all" />
+            <p className="text-xs text-gray-400 mt-1">Primer: collection, category ali listing URL, kjer želiš dobiti obvestilo za nove izdelke</p>
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-gray-700 mb-1 block">Interval preverjanja (min)</label>
+            <div className="flex items-center gap-2">
+              <input type="number" min="0" max="1440" step="1"
+                value={form.check_interval_minutes}
+                onChange={e => setForm(f => ({ ...f, check_interval_minutes: e.target.value }))}
+                className="w-28 px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all" />
+              <span className="text-xs text-gray-400">
+                {parseInt(form.check_interval_minutes) > 0
+                  ? `Vsake ${form.check_interval_minutes} min`
+                  : `Globalni interval (${globalInterval} min)`}
+              </span>
+            </div>
+            <p className="text-xs text-gray-400 mt-1">0 = uporabi privzeti interval za category watcher</p>
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-gray-700 mb-1 block">Filter cene (opcijsko)</label>
+            <div className="flex items-center gap-2">
+              <input type="number" min="0" step="0.01" placeholder="Min €"
+                value={form.min_price}
+                onChange={e => setForm(f => ({ ...f, min_price: e.target.value }))}
+                className="w-28 px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all" />
+              <span className="text-gray-400 text-sm">—</span>
+              <input type="number" min="0" step="0.01" placeholder="Max €"
+                value={form.max_price}
+                onChange={e => setForm(f => ({ ...f, max_price: e.target.value }))}
+                className="w-28 px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all" />
+            </div>
+          </div>
+          <div className="space-y-3 pt-2">
+            {toggleFields.map(({ key, icon, label, color }) => (
+              <label key={key} className="flex items-center gap-3 cursor-pointer group">
+                <Toggle checked={form[key]} onChange={v => setForm(f => ({ ...f, [key]: v }))} color={color} />
+                <span className="flex items-center gap-2 text-sm text-gray-700 group-hover:text-gray-900">{icon} {label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="p-6 border-t border-gray-100 flex justify-end gap-3">
+          <button onClick={onClose} className="px-5 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-colors">Prekliči</button>
+          <button onClick={handleSubmit} disabled={!form.category_url}
+            className="px-6 py-2.5 text-sm font-bold text-white bg-gray-900 hover:bg-gray-800 rounded-xl transition-colors disabled:opacity-40 flex items-center gap-2">
+            <Check size={16} /> {watch ? "Shrani" : "Dodaj kategorijo"}
           </button>
         </div>
       </div>
@@ -921,11 +1026,14 @@ export default function StockTracker() {
   const [status, setStatus] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [keywordWatches, setKeywordWatches] = useState([]);
+  const [categoryWatches, setCategoryWatches] = useState([]);
   const [telegramSettings, setTelegramSettings] = useState({ token: "", chatId: "", connected: false });
   const [showModal, setShowModal] = useState(false);
   const [showKeywordModal, setShowKeywordModal] = useState(false);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [editProduct, setEditProduct] = useState(null);
   const [editKeyword, setEditKeyword] = useState(null);
+  const [editCategory, setEditCategory] = useState(null);
   const [toast, setToast] = useState(null);
   const [activeTab, setActiveTab] = useState("products");
   const [checkingId, setCheckingId] = useState(null);
@@ -947,12 +1055,13 @@ export default function StockTracker() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [prods, sts, stat, notifs, kwWatches, domains, settings] = await Promise.all([
+      const [prods, sts, stat, notifs, kwWatches, catWatches, domains, settings] = await Promise.all([
         apiFetch(`${API}/products`).then(r => safeJson(r, [])),
         apiFetch(`${API}/stores`).then(r => safeJson(r, [])),
         apiFetch(`${API}/status`).then(r => safeJson(r, {})).catch(() => ({})),
         apiFetch(`${API}/notifications`).then(r => safeJson(r, [])),
         apiFetch(`${API}/keyword-watches`).then(r => safeJson(r, [])),
+        apiFetch(`${API}/category-watches`).then(r => safeJson(r, [])).catch(() => []),
         apiFetch(`${API}/cart/domains`).then(r => safeJson(r, [])).catch(() => []),
         apiFetch(`${API}/app-settings`).then(r => safeJson(r, {})).catch(() => ({})),
       ]);
@@ -961,6 +1070,7 @@ export default function StockTracker() {
       setStatus(stat && typeof stat === 'object' ? stat : {});
       setNotifications(Array.isArray(notifs) ? notifs : []);
       setKeywordWatches(Array.isArray(kwWatches) ? kwWatches : []);
+      setCategoryWatches(Array.isArray(catWatches) ? catWatches : []);
       setShopifyDomains(Array.isArray(domains) ? domains : []);
       if (settings && settings.check_interval_minutes) setAppSettings(settings);
     } catch (e) {
@@ -1114,6 +1224,35 @@ export default function StockTracker() {
     fetchData();
   };
 
+  const handleAddCategoryWatch = async (data) => {
+    try {
+      const res = await apiFetch(`${API}/category-watches`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
+      showToast("Kategorija dodana! Prvo preverjanje teče ...", "success");
+      setShowCategoryModal(false);
+      fetchData();
+      setTimeout(fetchData, 3000);
+      setTimeout(fetchData, 8000);
+      setTimeout(fetchData, 15000);
+    } catch (e) { showToast(e.message, "error"); }
+  };
+
+  const handleEditCategoryWatch = async (data) => {
+    try {
+      await apiFetch(`${API}/category-watches/${editCategory.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      showToast("Kategorija posodobljena!", "success");
+      setEditCategory(null);
+      fetchData();
+    } catch (e) { showToast("Napaka pri posodabljanju kategorije", "error"); }
+  };
+
+  const handleDeleteCategoryWatch = async (id) => {
+    if (!confirm("Odstrani to kategorijo?")) return;
+    await apiFetch(`${API}/category-watches/${id}`, { method: "DELETE" });
+    showToast("Kategorija odstranjena", "info");
+    fetchData();
+  };
+
   // Bulk delete handler
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
@@ -1167,6 +1306,28 @@ export default function StockTracker() {
     fetchData();
   };
 
+  const handleCheckCategoryWatch = async (id) => {
+    setCheckingId(`cat-${id}`);
+    await apiFetch(`${API}/category-watches/${id}/check`, { method: "POST" });
+    showToast("Preverjam kategorijo ...", "info");
+    let elapsed = 0;
+    const interval = setInterval(() => {
+      elapsed++;
+      fetchData();
+      if (elapsed >= 90) {
+        clearInterval(interval);
+        setCheckingId(null);
+      }
+    }, 1000);
+  };
+
+  const handleResetCategoryWatch = async (id) => {
+    if (!confirm("Resetiraj znane izdelke v kategoriji? Ob naslednjem preverjanju boš dobil obvestila za vse trenutno najdene izdelke.")) return;
+    await apiFetch(`${API}/category-watches/${id}/reset`, { method: "POST" });
+    showToast("Kategorija resetirana", "info");
+    fetchData();
+  };
+
   const handleBuildCart = async (domain) => {
     setBuildingCart(domain);
     try {
@@ -1188,6 +1349,7 @@ export default function StockTracker() {
   };
 
   const inStockCount = products.filter(p => p.in_stock).length;
+  const activeWatchCount = keywordWatches.filter(w => w.active).length + categoryWatches.filter(w => w.active).length;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1236,7 +1398,7 @@ export default function StockTracker() {
             { label: "Vseh izdelkov", value: products.length, icon: <Package size={18} />, color: "bg-gray-900 text-white" },
             { label: "Na zalogi", value: inStockCount, icon: <Check size={18} />, color: inStockCount > 0 ? "bg-emerald-500 text-white" : "bg-gray-100 text-gray-600" },
             { label: "Ni na zalogi", value: products.length - inStockCount, icon: <X size={18} />, color: "bg-gray-100 text-gray-600" },
-            { label: "Iskanj", value: keywordWatches.filter(w => w.active).length, icon: <Search size={18} />, color: "bg-gray-100 text-gray-600" },
+            { label: "Watchi", value: activeWatchCount, icon: <Search size={18} />, color: "bg-gray-100 text-gray-600" },
           ].map((stat, i) => (
             <div key={i} className={cn("rounded-2xl p-4 flex items-center gap-3", stat.color)}>
               {stat.icon}
@@ -1441,86 +1603,183 @@ export default function StockTracker() {
         {activeTab === "keywords" && (
           <div className="pb-8">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-gray-500">Spremljaj trgovine za nove izdelke po ključni besedi</p>
-              <button onClick={() => setShowKeywordModal(true)}
-                className="flex items-center gap-2 px-4 py-2.5 bg-gray-900 hover:bg-gray-800 rounded-xl text-sm font-bold text-white transition-colors">
-                <Plus size={16} /> Novo iskanje
-              </button>
+              <p className="text-sm text-gray-500">Uporabi keyword watch za iskanje po besedah ali category watch za cele collection strani</p>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setShowCategoryModal(true)}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl text-sm font-bold text-gray-700 transition-colors">
+                  <Link size={16} /> Nova kategorija
+                </button>
+                <button onClick={() => setShowKeywordModal(true)}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-gray-900 hover:bg-gray-800 rounded-xl text-sm font-bold text-white transition-colors">
+                  <Plus size={16} /> Novo iskanje
+                </button>
+              </div>
             </div>
 
-            {keywordWatches.length === 0 ? (
+            {keywordWatches.length === 0 && categoryWatches.length === 0 ? (
               <div className="text-center py-16 text-gray-400">
                 <Search size={40} className="mx-auto mb-3 opacity-40" />
-                <p className="font-medium">Ni aktivnih iskanj</p>
-                <p className="text-sm mt-1">Dodaj iskanje za spremljanje novih izdelkov</p>
+                <p className="font-medium">Ni aktivnih watchov</p>
+                <p className="text-sm mt-1">Dodaj keyword ali category watch za spremljanje novih izdelkov</p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {keywordWatches.map(w => (
-                  <div key={w.id} className={cn("bg-white rounded-2xl border p-5 transition-all",
-                    w.active ? "border-gray-200" : "border-gray-100 opacity-60")}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200">
-                            {w.store_name}
-                          </span>
-                          {w.notify_in_stock === 1 && (
-                            <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
-                              <Bell size={10} /> Zaloga
-                            </span>
-                          )}
-                          {w.auto_add_tracking === 1 && (
-                            <span className="text-xs bg-orange-100 text-orange-700 border border-orange-200 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
-                              <Zap size={10} /> Auto-track
-                            </span>
-                          )}
-                          {!w.active && <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Neaktivno</span>}
-                        </div>
-                        <h3 className="font-bold text-gray-900 text-lg">"{w.keyword}"</h3>
-                        <a href={w.store_url} target="_blank" rel="noopener noreferrer"
-                          className="text-sm text-blue-500 hover:text-blue-700 flex items-center gap-1 mt-1">
-                          <ExternalLink size={12} /> {w.store_url}
-                        </a>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <div className="text-2xl font-black text-gray-900">{w.last_found_count || 0}</div>
-                        <div className="text-xs text-gray-500">najdenih</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
-                      <div className="flex items-center gap-2 text-xs text-gray-400">
-                        <Clock size={12} />
-                        <span>Preverjeno: {timeAgo(w.last_checked)}</span>
-                        {w.check_interval_minutes > 0 && (
-                          <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-semibold">
-                            ⏱ {w.check_interval_minutes}min
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => handleCheckKeywordWatch(w.id)}
-                          disabled={checkingId === `kw-${w.id}`}
-                          className={cn("p-2 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition-colors",
-                            checkingId === `kw-${w.id}` && "animate-spin")}>
-                          <RefreshCw size={16} />
-                        </button>
-                        <button onClick={() => setEditKeyword(w)}
-                          className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors" title="Uredi iskanje">
-                          <Edit3 size={16} />
-                        </button>
-                        <button onClick={() => handleResetKeywordWatch(w.id)}
-                          className="p-2 rounded-lg hover:bg-amber-50 text-gray-400 hover:text-amber-600 transition-colors" title="Resetiraj znane izdelke">
-                          <Activity size={16} />
-                        </button>
-                        <button onClick={() => handleDeleteKeywordWatch(w.id)}
-                          className="p-2 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors">
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
+              <div className="space-y-6">
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Link size={16} className="text-gray-500" />
+                    <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Category Watches</h3>
                   </div>
-                ))}
+                  {categoryWatches.length === 0 ? (
+                    <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-6 text-sm text-gray-400">
+                      Ni dodanih kategorij.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {categoryWatches.map(w => (
+                        <div key={w.id} className={cn("bg-white rounded-2xl border p-5 transition-all",
+                          w.active ? "border-gray-200" : "border-gray-100 opacity-60")}>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-sky-100 text-sky-700 border border-sky-200">
+                                  {w.store_name}
+                                </span>
+                                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                                  kategorija
+                                </span>
+                                {w.auto_add_tracking === 1 && (
+                                  <span className="text-xs bg-orange-100 text-orange-700 border border-orange-200 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                                    <Zap size={10} /> Auto-track
+                                  </span>
+                                )}
+                              </div>
+                              <h3 className="font-bold text-gray-900 text-lg">{w.category_name || "Brez imena kategorije"}</h3>
+                              <a href={w.category_url} target="_blank" rel="noopener noreferrer"
+                                className="text-sm text-blue-500 hover:text-blue-700 flex items-center gap-1 mt-1 break-all">
+                                <ExternalLink size={12} /> {w.category_url}
+                              </a>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className="text-2xl font-black text-gray-900">{w.last_found_count || 0}</div>
+                              <div className="text-xs text-gray-500">najdenih</div>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
+                            <div className="flex items-center gap-2 text-xs text-gray-400">
+                              <Clock size={12} />
+                              <span>Preverjeno: {timeAgo(w.last_checked)}</span>
+                              {w.check_interval_minutes > 0 && (
+                                <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-semibold">
+                                  ⏱ {w.check_interval_minutes}min
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => handleCheckCategoryWatch(w.id)}
+                                disabled={checkingId === `cat-${w.id}`}
+                                className={cn("p-2 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition-colors",
+                                  checkingId === `cat-${w.id}` && "animate-spin")}>
+                                <RefreshCw size={16} />
+                              </button>
+                              <button onClick={() => setEditCategory(w)}
+                                className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors" title="Uredi kategorijo">
+                                <Edit3 size={16} />
+                              </button>
+                              <button onClick={() => handleResetCategoryWatch(w.id)}
+                                className="p-2 rounded-lg hover:bg-amber-50 text-gray-400 hover:text-amber-600 transition-colors" title="Resetiraj znane izdelke">
+                                <Activity size={16} />
+                              </button>
+                              <button onClick={() => handleDeleteCategoryWatch(w.id)}
+                                className="p-2 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors">
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Search size={16} className="text-gray-500" />
+                    <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Keyword Watches</h3>
+                  </div>
+                  {keywordWatches.length === 0 ? (
+                    <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-6 text-sm text-gray-400">
+                      Ni dodanih keyword iskanj.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {keywordWatches.map(w => (
+                        <div key={w.id} className={cn("bg-white rounded-2xl border p-5 transition-all",
+                          w.active ? "border-gray-200" : "border-gray-100 opacity-60")}>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200">
+                                  {w.store_name}
+                                </span>
+                                {w.notify_in_stock === 1 && (
+                                  <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                                    <Bell size={10} /> Zaloga
+                                  </span>
+                                )}
+                                {w.auto_add_tracking === 1 && (
+                                  <span className="text-xs bg-orange-100 text-orange-700 border border-orange-200 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                                    <Zap size={10} /> Auto-track
+                                  </span>
+                                )}
+                                {!w.active && <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Neaktivno</span>}
+                              </div>
+                              <h3 className="font-bold text-gray-900 text-lg">"{w.keyword}"</h3>
+                              <a href={w.store_url} target="_blank" rel="noopener noreferrer"
+                                className="text-sm text-blue-500 hover:text-blue-700 flex items-center gap-1 mt-1">
+                                <ExternalLink size={12} /> {w.store_url}
+                              </a>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className="text-2xl font-black text-gray-900">{w.last_found_count || 0}</div>
+                              <div className="text-xs text-gray-500">najdenih</div>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
+                            <div className="flex items-center gap-2 text-xs text-gray-400">
+                              <Clock size={12} />
+                              <span>Preverjeno: {timeAgo(w.last_checked)}</span>
+                              {w.check_interval_minutes > 0 && (
+                                <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-semibold">
+                                  ⏱ {w.check_interval_minutes}min
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => handleCheckKeywordWatch(w.id)}
+                                disabled={checkingId === `kw-${w.id}`}
+                                className={cn("p-2 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition-colors",
+                                  checkingId === `kw-${w.id}` && "animate-spin")}>
+                                <RefreshCw size={16} />
+                              </button>
+                              <button onClick={() => setEditKeyword(w)}
+                                className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors" title="Uredi iskanje">
+                                <Edit3 size={16} />
+                              </button>
+                              <button onClick={() => handleResetKeywordWatch(w.id)}
+                                className="p-2 rounded-lg hover:bg-amber-50 text-gray-400 hover:text-amber-600 transition-colors" title="Resetiraj znane izdelke">
+                                <Activity size={16} />
+                              </button>
+                              <button onClick={() => handleDeleteKeywordWatch(w.id)}
+                                className="p-2 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors">
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -1538,11 +1797,12 @@ export default function StockTracker() {
               <div key={n.id} className="bg-white rounded-xl border border-gray-200 p-4 flex items-start gap-3">
                 <div className={cn("w-8 h-8 rounded-full flex items-center justify-center shrink-0",
                   n.type === "stock_alert" ? "bg-emerald-100 text-emerald-600" :
-                  n.type === "keyword_watch" ? "bg-indigo-100 text-indigo-600" : "bg-blue-100 text-blue-600")}>
-                  {n.type === "stock_alert" ? <Package size={14} /> : n.type === "keyword_watch" ? <Search size={14} /> : <TrendingDown size={14} />}
+                  n.type === "keyword_watch" ? "bg-indigo-100 text-indigo-600" :
+                  n.type === "category_watch" ? "bg-sky-100 text-sky-600" : "bg-blue-100 text-blue-600")}>
+                  {n.type === "stock_alert" ? <Package size={14} /> : n.type === "keyword_watch" ? <Search size={14} /> : n.type === "category_watch" ? <Link size={14} /> : <TrendingDown size={14} />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900">{n.product_name || "Iskanje"}</p>
+                  <p className="text-sm font-semibold text-gray-900">{n.product_name || (n.type === "category_watch" ? "Kategorija" : "Iskanje")}</p>
                   <p className="text-sm text-gray-500">{n.message}</p>
                   <p className="text-xs text-gray-400 mt-1">{new Date(n.sent_at).toLocaleString("sl-SI")}</p>
                 </div>
@@ -1581,6 +1841,8 @@ export default function StockTracker() {
       {editProduct && <ProductModal product={editProduct} stores={stores} appSettings={appSettings} onSave={handleEdit} onClose={() => setEditProduct(null)} />}
       {showKeywordModal && <KeywordModal appSettings={appSettings} onSave={handleAddKeywordWatch} onClose={() => setShowKeywordModal(false)} />}
       {editKeyword && <KeywordModal watch={editKeyword} appSettings={appSettings} onSave={handleEditKeywordWatch} onClose={() => setEditKeyword(null)} />}
+      {showCategoryModal && <CategoryModal appSettings={appSettings} onSave={handleAddCategoryWatch} onClose={() => setShowCategoryModal(false)} />}
+      {editCategory && <CategoryModal watch={editCategory} appSettings={appSettings} onSave={handleEditCategoryWatch} onClose={() => setEditCategory(null)} />}
     </div>
   );
 }

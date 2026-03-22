@@ -8,6 +8,7 @@ const { initDatabase } = require("./utils/database");
 const db = require("./utils/database");
 const checker = require("./utils/checker");
 const keywordWatcher = require("./utils/keyword-watcher");
+const categoryWatcher = require("./utils/category-watcher");
 const telegram = require("./utils/telegram");
 const scraper = require("./scrapers/generic");
 const { buildCartUrl, buildCartUrlForProducts } = require("./utils/shopify-cart");
@@ -323,6 +324,7 @@ app.post("/api/analyze-url", async (req, res) => {
       detected_name: result?.name || null,
       detected_price: result?.price || null,
       detected_in_stock: result?.inStock ?? null,
+      detected_is_preorder: result?.isPreorder ?? false,
       detected_image: result?.imageUrl || null,
       is_collections_url: isCollectionsUrl,
       canonical_url: canonicalUrl !== url ? canonicalUrl : null,
@@ -456,6 +458,104 @@ app.post("/api/keyword-watches/:id/check", async (req, res) => {
 app.post("/api/keyword-watches/:id/reset", (req, res) => {
   try {
     db.prepare("UPDATE keyword_watches SET known_product_urls='[]', known_stock_map='{}' WHERE id=?").run(req.params.id);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Category watches
+app.get("/api/category-watches", (req, res) => {
+  try {
+    const watches = db.prepare("SELECT *, (SELECT COUNT(*) FROM json_each(known_product_urls)) as known_count FROM category_watches ORDER BY created_at DESC").all();
+    res.json(watches.map(w => ({ ...w, known_count: w.known_count || 0, active: w.active !== 0 })));
+  } catch (e) {
+    try {
+      const watches = db.prepare("SELECT * FROM category_watches ORDER BY created_at DESC").all();
+      res.json(watches.map(w => {
+        let knownCount = 0;
+        try { knownCount = JSON.parse(w.known_product_urls || "[]").length; } catch (e2) {}
+        return { ...w, known_count: knownCount, active: w.active !== 0 };
+      }));
+    } catch (e2) { res.status(500).json({ error: e2.message }); }
+  }
+});
+
+app.post("/api/category-watches", async (req, res) => {
+  try {
+    const { category_name, category_url, notify_new_products, auto_add_tracking, check_interval_minutes, min_price, max_price } = req.body;
+    if (!category_url) return res.status(400).json({ error: "category_url required" });
+
+    const normalizedCategoryUrl = new URL(category_url).toString();
+    const storeUrl = (() => {
+      const u = new URL(normalizedCategoryUrl);
+      return `${u.origin}/`;
+    })();
+    const storeName = detectStoreFromUrl(storeUrl);
+
+    const result = db.prepare(
+      `INSERT INTO category_watches (category_name, category_url, store_url, store_name, notify_new_products, auto_add_tracking, check_interval_minutes, min_price, max_price)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      category_name || null,
+      normalizedCategoryUrl,
+      storeUrl,
+      storeName,
+      notify_new_products !== false ? 1 : 0,
+      auto_add_tracking ? 1 : 0,
+      parseInt(check_interval_minutes, 10) || 0,
+      min_price ? parseFloat(min_price) : null,
+      max_price ? parseFloat(max_price) : null,
+    );
+    const watch = db.prepare("SELECT * FROM category_watches WHERE id = ?").get(result.lastInsertRowid);
+    res.json(watch);
+    categoryWatcher.checkWatch(watch).catch(e => console.error('Initial category check failed:', e.message));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put("/api/category-watches/:id", async (req, res) => {
+  try {
+    const { category_name, category_url, notify_new_products, auto_add_tracking, check_interval_minutes, min_price, max_price } = req.body;
+    const normalizedCategoryUrl = new URL(category_url).toString();
+    const storeUrl = (() => {
+      const u = new URL(normalizedCategoryUrl);
+      return `${u.origin}/`;
+    })();
+    const storeName = detectStoreFromUrl(storeUrl);
+    db.prepare(
+      `UPDATE category_watches SET category_name=?, category_url=?, store_url=?, store_name=?, notify_new_products=?, auto_add_tracking=?, check_interval_minutes=?, min_price=?, max_price=?, updated_at=datetime('now') WHERE id=?`
+    ).run(
+      category_name || null,
+      normalizedCategoryUrl,
+      storeUrl,
+      storeName,
+      notify_new_products ? 1 : 0,
+      auto_add_tracking ? 1 : 0,
+      parseInt(check_interval_minutes, 10) || 0,
+      min_price ? parseFloat(min_price) : null,
+      max_price ? parseFloat(max_price) : null,
+      req.params.id
+    );
+    res.json({ ok: true });
+    const watch = db.prepare("SELECT * FROM category_watches WHERE id = ?").get(req.params.id);
+    if (watch) setTimeout(() => categoryWatcher.checkWatch(watch), 300);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete("/api/category-watches/:id", (req, res) => {
+  try {
+    db.prepare("DELETE FROM category_watches WHERE id = ?").run(req.params.id);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/category-watches/:id/check", async (req, res) => {
+  res.json({ ok: true });
+  const watch = db.prepare("SELECT * FROM category_watches WHERE id = ?").get(req.params.id);
+  if (watch) categoryWatcher.checkWatch(watch);
+});
+
+app.post("/api/category-watches/:id/reset", (req, res) => {
+  try {
+    db.prepare("UPDATE category_watches SET known_product_urls='[]' WHERE id=?").run(req.params.id);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -597,6 +697,7 @@ async function start() {
 
   // Cron: keyword watches — check every minute, individual intervals are respected inside checkAll()
   cron.schedule("* * * * *", () => keywordWatcher.checkAll());
+  cron.schedule("* * * * *", () => categoryWatcher.checkAll());
 
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);

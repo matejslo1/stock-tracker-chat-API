@@ -591,6 +591,28 @@ class TelegramService {
     } catch(e) { console.error('Failed to send keyword alert:', e.message); return false; }
   }
 
+  async sendCategoryAlert(watch, newProducts) {
+    if (!this.initialized || !this.chatId) return false;
+    if (this._isPaused() || this._isQuietHours()) return false;
+    const label = watch.category_name || watch.category_url;
+    let message = `📚 *NOVI IZDELKI V KATEGORIJI*\n🏪 ${watch.store_url}\n📂 ${label}\n\n`;
+    newProducts.slice(0, 10).forEach((p, i) => {
+      message += `${i + 1}. *${p.name}*\n`;
+      if (p.price) message += `   💰 ${p.price.toFixed(2)} €\n`;
+      if (p.inStock !== undefined) message += `   ${p.inStock ? '✅ Na zalogi' : '❌ Ni na zalogi'}\n`;
+      message += `   🔗 [Odpri](${p.url})\n\n`;
+    });
+    if (newProducts.length > 10) message += `_...in še ${newProducts.length - 10} več_\n`;
+    message += `Skupaj: ${newProducts.length} novih`;
+    try {
+      await this.bot.sendMessage(this.chatId, message, { parse_mode: 'Markdown', disable_web_page_preview: true });
+      return true;
+    } catch (e) {
+      console.error('Failed to send category alert:', e.message);
+      return false;
+    }
+  }
+
   async sendPurchaseAttemptAlert(product, status, details) {
     if (!this.initialized || !this.chatId) return false;
     const emoji = status === 'success' ? '✅' : '⚠️';

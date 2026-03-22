@@ -122,6 +122,7 @@ await Promise.all(products.map(product => limit(async () => {
 
     const wasInStock = product.in_stock === 1;
     const isNowInStock = result.inStock;
+    const isNowPreorder = result.isPreorder === true;
     const oldPrice = product.current_price;
     const newPrice = result.price ? Math.round(result.price * 100) / 100 : null;
     const variantId = result.variantId || null;
@@ -150,6 +151,7 @@ await Promise.all(products.map(product => limit(async () => {
     db.prepare(`
       UPDATE products SET
         in_stock = ?,
+        is_preorder = ?,
         store = ?,
         current_price = COALESCE(?, current_price),
         image_url = COALESCE(?, image_url),
@@ -161,6 +163,7 @@ await Promise.all(products.map(product => limit(async () => {
       WHERE id = ?
     `).run(
       isNowInStock ? 1 : 0,
+      isNowPreorder ? 1 : 0,
       effectiveStore,
       newPrice,
       result.imageUrl,

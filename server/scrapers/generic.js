@@ -26,6 +26,21 @@ class GenericScraper {
     try { return new URL(rawUrl, baseUrl).href; } catch (e) { return rawUrl; }
   }
 
+  parseStoreMeta(storeConfig) {
+    try {
+      return storeConfig?.config_json ? JSON.parse(storeConfig.config_json) : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  detectPreorderText(extraTerms = [], ...parts) {
+    const text = parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!text) return false;
+    const terms = ['prednarud', 'predobjed', 'prednaroc', 'preorder', 'pre-order', ...extraTerms.map(t => String(t).toLowerCase())];
+    return terms.some(token => text.includes(token));
+  }
+
   async getBrowser() {
     if (!this.browser) {
       try {
@@ -80,9 +95,19 @@ class GenericScraper {
 
       const html = response.data;
       const $ = cheerio.load(html);
+      const storeMeta = this.parseStoreMeta(storeConfig);
       const isShopify = html.includes('cdn.shopify.com') || html.includes('Shopify.theme') ||
                         html.includes('/cart/add') || storeConfig.store_name === 'shopify';
       const isShoptet = html.includes('cdn.myshoptet.com') || html.includes('Shoptet') || storeConfig.store_name === 'pikazard';
+      const isPreorder = this.detectPreorderText(
+        storeMeta.preorder_terms || [],
+        $('title').text(),
+        $('h1').first().text(),
+        $('.product__title').first().text(),
+        $('.product-title').first().text(),
+        $('.product-badge').first().text(),
+        $('.badge').first().text(),
+      );
 
       console.log(`  🔎 Scraping: ${url}`);
       console.log(`  🏪 Platform: ${isShopify ? 'Shopify' : isShoptet ? 'Shoptet' : storeConfig.store_name}`);
@@ -100,6 +125,7 @@ class GenericScraper {
           const jsonLdResult = this.extractFromJsonLd($, html);
           return {
             inStock: shopifyResult.inStock,
+            isPreorder,
             price: shopifyResult.price || jsonLdResult.price,
             isShopify: true,
             variantId: shopifyResult.variantId,
@@ -115,7 +141,7 @@ class GenericScraper {
       console.log(`  📄 JSON-LD: inStock=${jsonLdResult.inStock}, price=${jsonLdResult.price}`);
 
       // 2.5. Shoptet-specific extraction
-      const shoptetResult = isShoptet ? this.extractShoptetData($, url) : { inStock: null, price: null, imageUrl: null, rawStockText: '' };
+      const shoptetResult = isShoptet ? this.extractShoptetData($, url, storeMeta) : { inStock: null, price: null, imageUrl: null, rawStockText: '', isPreorder: false };
       if (isShoptet) {
         console.log(`  🛒 Shoptet extra: inStock=${shoptetResult.inStock}, price=${shoptetResult.price}, raw="${shoptetResult.rawStockText}"`);
       }
@@ -142,6 +168,7 @@ class GenericScraper {
 
       return {
         inStock: finalInStock,
+        isPreorder: isPreorder || shoptetResult.isPreorder,
         price: finalPrice,
         isShopify,
         variantId: shopifyResult.variantId || null,
@@ -422,8 +449,8 @@ class GenericScraper {
     return result;
   }
 
-  extractShoptetData($, url) {
-    const result = { inStock: null, price: null, imageUrl: null, rawStockText: '' };
+  extractShoptetData($, url, storeMeta = {}) {
+    const result = { inStock: null, price: null, imageUrl: null, rawStockText: '', isPreorder: false };
 
     const availabilityText = [
       $('.availability-value').first().text(),
@@ -434,6 +461,7 @@ class GenericScraper {
 
     if (availabilityText) {
       result.rawStockText = availabilityText;
+      if (this.detectPreorderText(storeMeta.preorder_terms || [], availabilityText)) result.isPreorder = true;
       if (/vypredan|nie je skladom|nedostupn|na objednavku|na objednávku/.test(availabilityText)) result.inStock = false;
       else if (/skladom|na sklade|\(\s*\d+\s*ks\)/.test(availabilityText)) result.inStock = true;
     }
@@ -448,6 +476,7 @@ class GenericScraper {
 
     const addToCartText = $('.add-to-cart-button, button[name="submit"], .btn-cart, .btn.btn-cart').first().text().replace(/\s+/g, ' ').trim().toLowerCase();
     if (result.inStock === null && addToCartText) {
+      if (this.detectPreorderText(storeMeta.preorder_terms || [], addToCartText)) result.isPreorder = true;
       if (addToCartText.includes('do košíka') || addToCartText.includes('pridať do košíka')) result.inStock = true;
       if (addToCartText.includes('vypredané') || addToCartText.includes('nedostupné')) result.inStock = false;
     }

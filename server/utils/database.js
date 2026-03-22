@@ -74,6 +74,7 @@ async function initDatabase() {
       current_price REAL,
       currency TEXT DEFAULT 'EUR',
       in_stock INTEGER DEFAULT 0,
+      is_preorder INTEGER DEFAULT 0,
       last_checked TEXT,
       last_in_stock TEXT,
       auto_purchase INTEGER DEFAULT 0,
@@ -87,9 +88,13 @@ async function initDatabase() {
     )
   `);
 
-// Add check_interval_minutes column if it doesn't exist (migration)
+  // Add check_interval_minutes column if it doesn't exist (migration)
   try {
     db.run('ALTER TABLE products ADD COLUMN check_interval_minutes INTEGER DEFAULT 0');
+  } catch(e) { /* column already exists */ }
+
+  try {
+    db.run('ALTER TABLE products ADD COLUMN is_preorder INTEGER DEFAULT 0');
   } catch(e) { /* column already exists */ }
 
   // Add shopify_variant_id column if it doesn't exist (migration)
@@ -209,6 +214,27 @@ async function initDatabase() {
     )
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS category_watches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category_name TEXT,
+      category_url TEXT NOT NULL,
+      store_url TEXT NOT NULL,
+      store_name TEXT NOT NULL,
+      notify_new_products INTEGER DEFAULT 1,
+      auto_add_tracking INTEGER DEFAULT 0,
+      known_product_urls TEXT DEFAULT '[]',
+      last_checked TEXT,
+      last_found_count INTEGER DEFAULT 0,
+      active INTEGER DEFAULT 1,
+      check_interval_minutes INTEGER DEFAULT 0,
+      min_price REAL DEFAULT NULL,
+      max_price REAL DEFAULT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
   // Migration: add known_stock_map if not exists
   try { db.run("ALTER TABLE keyword_watches ADD COLUMN known_stock_map TEXT DEFAULT '{}'"); } catch(e) {}
 
@@ -217,6 +243,9 @@ async function initDatabase() {
   // Migration: add price filters
   try { db.run("ALTER TABLE keyword_watches ADD COLUMN min_price REAL DEFAULT NULL"); } catch(e) {}
   try { db.run("ALTER TABLE keyword_watches ADD COLUMN max_price REAL DEFAULT NULL"); } catch(e) {}
+  try { db.run("ALTER TABLE category_watches ADD COLUMN check_interval_minutes INTEGER DEFAULT 0"); } catch(e) {}
+  try { db.run("ALTER TABLE category_watches ADD COLUMN min_price REAL DEFAULT NULL"); } catch(e) {}
+  try { db.run("ALTER TABLE category_watches ADD COLUMN max_price REAL DEFAULT NULL"); } catch(e) {}
 
   // Migration: fix products where store = hostname (e.g. 'tcgstar.eu') instead of valid store name
   // Auto-upgrade to the correct built-in store based on the URL/domain.
@@ -290,7 +319,13 @@ async function initDatabase() {
       out_of_stock: 'ni na zalogi,sold out,out of stock,unavailable,razprodano',
       in_stock: 'v kosharico,add to cart,dodaj v kosharico,buy now,v kosarico',
       puppeteer: 0,
-      config: JSON.stringify({ platform: 'shopify', locale: 'sl' })
+      config: JSON.stringify({
+        platform: 'shopify',
+        locale: 'sl',
+        search_url: '/search?options%5Bprefix%5D=last&q={keyword}&type=product',
+        preorder_terms: ['prednaročilo', 'prednarocilo', 'preorder', 'pre-order'],
+        collections_url: '/collections'
+      })
     },
     {
       name: 'pokedom',
@@ -301,7 +336,13 @@ async function initDatabase() {
       out_of_stock: 'sold out,out of stock,rasprodano,nije dostupno',
       in_stock: 'add to cart,dodaj u kosaricu,dodaj u košaricu,kupi odmah',
       puppeteer: 0,
-      config: JSON.stringify({ platform: 'shopify', locale: 'hr' })
+      config: JSON.stringify({
+        platform: 'shopify',
+        locale: 'hr',
+        search_url: '/search?options%5Bprefix%5D=last&q={keyword}&type=product',
+        preorder_terms: ['prednarudžba', 'prednarudzba', 'preorder', 'pre-order'],
+        preorder_collection: '/collections/prednarudzbe'
+      })
     },
     {
       // Pikazard.eu — Shoptet platform (Slovak), NOT Shopify
@@ -316,7 +357,13 @@ async function initDatabase() {
       out_of_stock: 'vypredané,nie je skladom,nedostupné,na objednávku,nedostupný,dopyt',
       in_stock: 'skladom,pridať do košíka,do košíka',
       puppeteer: 0,
-      config: JSON.stringify({ platform: 'shoptet', search_url: '/vyhladavanie/?string={keyword}' })
+      config: JSON.stringify({
+        platform: 'shoptet',
+        locale: 'sk',
+        search_url: '/vyhladavanie/?string={keyword}',
+        preorder_terms: ['predobjednávka', 'predobjednavka', 'preorder', 'pre-order'],
+        brand_collection: '/znacka/pokemon-company/'
+      })
     },
     {
       name: 'custom',
@@ -362,6 +409,8 @@ async function initDatabase() {
 
     CREATE INDEX IF NOT EXISTS idx_keyword_watches_store ON keyword_watches(store_name);
     CREATE INDEX IF NOT EXISTS idx_keyword_watches_last_checked ON keyword_watches(last_checked);
+    CREATE INDEX IF NOT EXISTS idx_category_watches_store ON category_watches(store_name);
+    CREATE INDEX IF NOT EXISTS idx_category_watches_last_checked ON category_watches(last_checked);
   `);
 
   saveToFile();

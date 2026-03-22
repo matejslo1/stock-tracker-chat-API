@@ -55,6 +55,13 @@ class KeywordWatcher {
     const baseUrl = watch.store_url.replace(/\/+$/, '');
     const keyword = encodeURIComponent(watch.keyword);
     const hostname = (() => { try { return new URL(baseUrl).hostname; } catch(e) { return ''; } })();
+    try {
+      const configRow = watch.store_name ? db.prepare('SELECT config_json FROM store_configs WHERE store_name = ?').get(watch.store_name) : null;
+      const meta = configRow?.config_json ? JSON.parse(configRow.config_json) : null;
+      if (meta?.search_url) {
+        return new URL(meta.search_url.replace('{keyword}', keyword), baseUrl).toString();
+      }
+    } catch (e) { /* ignore and fall back */ }
     if (hostname.includes('amazon')) return `${baseUrl}/s?k=${keyword}`;
     if (hostname.includes('bigbang')) return `${baseUrl}/iskanje?q=${keyword}`;
     if (hostname.includes('mimovrste')) return `${baseUrl}/iskanje?q=${keyword}`;
