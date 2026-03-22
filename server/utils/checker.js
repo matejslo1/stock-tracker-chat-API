@@ -2,6 +2,7 @@ const db = require('../utils/database');
 const telegram = require('../utils/telegram');
 const scraper = require('../scrapers/generic');
 const pLimit = require('p-limit');
+const { detectStoreFromUrl } = require('./storeDetection');
 class StockChecker {
   constructor() {
     this.isChecking = false;
@@ -26,6 +27,34 @@ class StockChecker {
     } catch (e) {
       console.warn('⚠️  Could not persist global stats:', e.message);
     }
+  }
+
+  async runProductChecks(products, { forceNotify = false, label = 'products', totalCount = products.length } = {}) {
+    const concurrency = Math.max(1, parseInt(process.env.SCRAPE_CONCURRENCY || '3', 10) || 3);
+    const limit = pLimit(concurrency);
+
+    await Promise.all(products.map(product => limit(async () => {
+      try {
+        await this.checkProduct(product, { forceNotify });
+
+        // Small jitter after each product to be nicer to stores
+        const delay = 800 + Math.random() * 1200;
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } catch (error) {
+        console.error(`❌ Error checking ${product.name}:`, error.message);
+        const nowIso = new Date().toISOString();
+        // Still update last_checked so UI doesn't show "Nikoli" forever
+        try {
+          db.prepare('UPDATE products SET last_checked = ?, updated_at = ? WHERE id = ?').run(nowIso, nowIso, product.id);
+        } catch (e) {}
+      }
+    })));
+
+    this.lastCheckTime = new Date().toISOString();
+    this.checkCount++;
+    this._persistGlobalStats(this.lastCheckTime);
+    console.log(`✅ Stock check #${this.checkCount} complete. Checked ${products.length}/${totalCount} ${label}.`);
+    return { checked: products.length, total: totalCount };
   }
 
   async checkAll(forceProductId = null, { force = false } = {}) {
@@ -72,35 +101,94 @@ class StockChecker {
         this.checkCount++;
         this._persistGlobalStats(this.lastCheckTime);
         console.log('📭 All products checked recently, skipping');
-        return;
+        return { checked: 0, total: allProducts.length };
       }
-      const concurrency = Math.max(1, parseInt(process.env.SCRAPE_CONCURRENCY || '3', 10) || 3);
-const limit = pLimit(concurrency);
-
-// Run checks with limited concurrency to avoid bans / overload
-await Promise.all(products.map(product => limit(async () => {
-  try {
-    await this.checkProduct(product, { forceNotify: force });
-
-    // Small jitter after each product to be nicer to stores
-    const delay = 800 + Math.random() * 1200;
-    await new Promise(resolve => setTimeout(resolve, delay));
-  } catch (error) {
-    console.error(`❌ Error checking ${product.name}:`, error.message);
-    // Still update last_checked so UI doesn't show "Nikoli" forever
-    try {
-      db.prepare('UPDATE products SET last_checked = ?, updated_at = ? WHERE id = ?').run(nowIso, nowIso, product.id);
-    } catch(e) {}
-  }
-})));
-
-      this.lastCheckTime = new Date().toISOString();
-      this.checkCount++;
-      this._persistGlobalStats(this.lastCheckTime);
-      console.log(`✅ Stock check #${this.checkCount} complete. Checked ${products.length}/${allProducts.length} products.`);
+      return await this.runProductChecks(products, {
+        forceNotify: force,
+        label: 'products',
+        totalCount: allProducts.length,
+      });
 
     } catch (error) {
       console.error('❌ Stock check failed:', error.message);
+    } finally {
+      this.isChecking = false;
+    }
+  }
+
+  async checkProductsByIds(ids, { forceNotify = true } = {}) {
+    const uniqueIds = [...new Set(
+      (Array.isArray(ids) ? ids : [])
+        .map(id => parseInt(id, 10))
+        .filter(id => Number.isFinite(id))
+    )];
+
+    if (uniqueIds.length === 0) {
+      return { started: false, checked: 0, total: 0 };
+    }
+
+    if (this.isChecking) {
+      console.log('⏳ Check already in progress, skipping bulk re-check...');
+      return { started: false, busy: true };
+    }
+
+    const placeholders = uniqueIds.map(() => '?').join(',');
+    const products = db.prepare(`SELECT * FROM products WHERE id IN (${placeholders})`).all(...uniqueIds);
+
+    if (products.length === 0) {
+      return { started: false, checked: 0, total: 0 };
+    }
+
+    this.isChecking = true;
+    console.log(`\n🔍 [${new Date().toLocaleTimeString()}] Starting filtered stock check for ${products.length} products...`);
+
+    try {
+      const result = await this.runProductChecks(products, {
+        forceNotify,
+        label: 'filtered products',
+        totalCount: products.length,
+      });
+      return { started: true, ...result };
+    } catch (error) {
+      console.error('❌ Bulk stock check failed:', error.message);
+      throw error;
+    } finally {
+      this.isChecking = false;
+    }
+  }
+
+  async checkSingleProduct(productOrId, { forceNotify = false } = {}) {
+    const product = typeof productOrId === 'object' && productOrId
+      ? productOrId
+      : db.prepare('SELECT * FROM products WHERE id = ?').get(productOrId);
+
+    if (!product) {
+      return { started: false, missing: true };
+    }
+
+    if (this.isChecking) {
+      console.log(`⚡ Running inline single-product check for: ${product.name}`);
+      try {
+        await this.checkProduct(product, { forceNotify });
+      } catch (error) {
+        console.error(`❌ Error checking ${product.name}:`, error.message);
+      }
+      return { started: false, inline: true };
+    }
+
+    this.isChecking = true;
+    console.log(`\n🔍 [${new Date().toLocaleTimeString()}] Starting single-product stock check for: ${product.name}`);
+
+    try {
+      const result = await this.runProductChecks([product], {
+        forceNotify,
+        label: 'product',
+        totalCount: 1,
+      });
+      return { started: true, ...result };
+    } catch (error) {
+      console.error(`❌ Single-product stock check failed for ${product.name}:`, error.message);
+      throw error;
     } finally {
       this.isChecking = false;
     }
@@ -128,7 +216,10 @@ await Promise.all(products.map(product => limit(async () => {
     const variantId = result.variantId || null;
 
     // Upgrade store type in DB if scraper auto-detected Shopify
-    const effectiveStore = (result.isShopify && product.store !== 'shopify') ? 'shopify' : product.store;
+    const detectedStore = detectStoreFromUrl(product.url);
+    const effectiveStore = detectedStore !== 'custom'
+      ? detectedStore
+      : (result.isShopify && product.store !== 'shopify' ? 'shopify' : product.store);
     if (effectiveStore !== product.store) {
       console.log(`  🔄 Upgrading store from '${product.store}' to '${effectiveStore}' in DB`);
       db.prepare('UPDATE products SET store = ? WHERE id = ?').run(effectiveStore, product.id);
@@ -340,6 +431,3 @@ await Promise.all(products.map(product => limit(async () => {
 }
 
 module.exports = new StockChecker();
-
-
-module.exports.checkSingleProduct = module.exports.checkProduct;

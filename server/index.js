@@ -273,12 +273,33 @@ app.get("/api/notifications", (req, res) => {
 // Manual check
 app.post("/api/check", async (req, res) => {
   res.json({ ok: true });
-  checker.checkAll(null, { force: true });
+  checker.checkAll(null, { force: true }).catch(e => console.error('Manual full check failed:', e.message));
+});
+
+app.post("/api/check/bulk", async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids.map(id => parseInt(id, 10)).filter(id => Number.isFinite(id))
+      : [];
+
+    if (ids.length === 0) {
+      return res.status(400).json({ error: "ids array required" });
+    }
+
+    if (checker.getStatus().isChecking) {
+      return res.status(409).json({ error: "Preverjanje že poteka" });
+    }
+
+    res.json({ ok: true, queued: ids.length });
+    checker.checkProductsByIds(ids, { forceNotify: true }).catch(e => console.error('Bulk filtered check failed:', e.message));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.post("/api/check/:id", async (req, res) => {
   res.json({ ok: true });
-  checker.checkSingleProduct(parseInt(req.params.id));
+  checker.checkSingleProduct(parseInt(req.params.id, 10)).catch(e => console.error('Manual single check failed:', e.message));
 });
 
 // Analyze URL (scrape without saving)

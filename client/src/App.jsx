@@ -55,6 +55,17 @@ const detectStoreFromProduct = (product) => {
   return product?.store || "custom";
 };
 
+const matchesStockFilter = (product, filterStock) => {
+  const isPreorder = product?.is_preorder === 1 || product?.is_preorder === true;
+  const isInStock = product?.in_stock === 1 || product?.in_stock === true;
+
+  if (filterStock === "all") return true;
+  if (filterStock === "preorder") return isPreorder;
+  if (filterStock === "in_stock") return isInStock && !isPreorder;
+  if (filterStock === "out_of_stock") return !isInStock && !isPreorder;
+  return true;
+};
+
 const Toast = ({ message, type, onClose }) => {
   useEffect(() => { const t = setTimeout(onClose, 4000); return () => clearTimeout(t); }, [onClose]);
   const colors = { success: "bg-emerald-500", error: "bg-red-500", info: "bg-blue-500", warning: "bg-amber-500" };
@@ -1067,7 +1078,7 @@ export default function StockTracker() {
   const [buildingCart, setBuildingCart] = useState(null);
   const [appSettings, setAppSettings] = useState({ check_interval_minutes: 5 });
   // Products filter/bulk-select state
-  const [filterStock, setFilterStock] = useState("all"); // "all" | "in_stock" | "out_of_stock"
+  const [filterStock, setFilterStock] = useState("all"); // "all" | "in_stock" | "preorder" | "out_of_stock"
   const [filterStore, setFilterStore] = useState("all");
   const [selectedIds, setSelectedIds] = useState(new Set());
 
@@ -1184,6 +1195,56 @@ export default function StockTracker() {
           showToast("Preverjanje končano!", "success");
         }
       } catch(e) {
+        clearInterval(poll);
+        await fetchData();
+        setCheckingId(null);
+      }
+    }, 2000);
+    setTimeout(() => { clearInterval(poll); fetchData(); setCheckingId(null); }, 120000);
+  };
+
+  const handleCheckFiltered = async (filteredProducts) => {
+    if (!filteredProducts.length) {
+      showToast("Ni izdelkov za preverjanje", "warning");
+      return;
+    }
+
+    setCheckingId("filtered");
+    try {
+      const res = await apiFetch(`${API}/check/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: filteredProducts.map(product => product.id) }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error || `Strežnik ni dosegljiv (${res.status})`, "error");
+        setCheckingId(null);
+        return;
+      }
+      showToast(`Preverjam ${filteredProducts.length} prikazanih izdelkov...`, "info");
+    } catch (e) {
+      showToast("Napaka pri preverjanju prikazanih izdelkov", "error");
+      setCheckingId(null);
+      return;
+    }
+
+    const poll = setInterval(async () => {
+      try {
+        const res = await apiFetch(`${API}/status`);
+        if (!res.ok) {
+          clearInterval(poll);
+          setCheckingId(null);
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (!data.isChecking) {
+          clearInterval(poll);
+          await fetchData();
+          setCheckingId(null);
+          showToast("Preverjanje prikazanih izdelkov končano!", "success");
+        }
+      } catch (e) {
         clearInterval(poll);
         await fetchData();
         setCheckingId(null);
@@ -1370,15 +1431,21 @@ export default function StockTracker() {
     setBuildingCart(null);
   };
 
-  const inStockCount = products.filter(p => p.in_stock).length;
+  const inStockCount = products.filter(product => matchesStockFilter(product, "in_stock")).length;
+  const preorderCount = products.filter(product => matchesStockFilter(product, "preorder")).length;
+  const outOfStockCount = products.filter(product => matchesStockFilter(product, "out_of_stock")).length;
   const activeWatchCount = keywordWatches.filter(w => w.active).length + categoryWatches.filter(w => w.active).length;
-  const storeCounts = products.reduce((acc, product) => {
+  const statusFilteredProducts = products.filter(product => matchesStockFilter(product, filterStock));
+  const filteredProducts = statusFilteredProducts.filter(product =>
+    filterStore === "all" || detectStoreFromProduct(product) === filterStore
+  );
+  const storeCounts = statusFilteredProducts.reduce((acc, product) => {
     const store = detectStoreFromProduct(product);
     acc[store] = (acc[store] || 0) + 1;
     return acc;
   }, {});
   const quickStoreFilters = [
-    { value: "all", label: "Vse", count: products.length },
+    { value: "all", label: "Vse", count: statusFilteredProducts.length },
     { value: "pikazard", label: "pikazard", count: storeCounts.pikazard || 0 },
     { value: "pokedom", label: "pokedom", count: storeCounts.pokedom || 0 },
     { value: "tcgstar", label: "tcgstar", count: storeCounts.tcgstar || 0 },
@@ -1425,11 +1492,12 @@ export default function StockTracker() {
 
       {/* Stats Bar */}
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {[
             { label: "Vseh izdelkov", value: products.length, icon: <Package size={18} />, color: "bg-gray-900 text-white" },
             { label: "Na zalogi", value: inStockCount, icon: <Check size={18} />, color: inStockCount > 0 ? "bg-emerald-500 text-white" : "bg-gray-100 text-gray-600" },
-            { label: "Ni na zalogi", value: products.length - inStockCount, icon: <X size={18} />, color: "bg-gray-100 text-gray-600" },
+            { label: "Prednaročilo", value: preorderCount, icon: <Clock size={18} />, color: preorderCount > 0 ? "bg-amber-500 text-white" : "bg-gray-100 text-gray-600" },
+            { label: "Ni na zalogi", value: outOfStockCount, icon: <X size={18} />, color: "bg-gray-100 text-gray-600" },
             { label: "Watchi", value: activeWatchCount, icon: <Search size={18} />, color: "bg-gray-100 text-gray-600" },
           ].map((stat, i) => (
             <div key={i} className={cn("rounded-2xl p-4 flex items-center gap-3", stat.color)}>
@@ -1568,7 +1636,7 @@ export default function StockTracker() {
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Status</span>
                     <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
-                      {[["all","Vsi"],["in_stock","Na zalogi"],["out_of_stock","Ni na zalogi"]].map(([val,label]) => (
+                      {[["all","Vsi"],["in_stock","Na zalogi"],["preorder","Prednaročilo"],["out_of_stock","Ni na zalogi"]].map(([val,label]) => (
                         <button key={val} onClick={() => { setFilterStock(val); setSelectedIds(new Set()); }}
                           className={cn("px-3 py-1.5 rounded-lg text-xs font-semibold transition-all",
                             filterStock === val ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700")}>
@@ -1594,41 +1662,44 @@ export default function StockTracker() {
                       })}
                     </div>
                   </div>
-                  {selectedIds.size > 0 && (
-                    <button onClick={handleBulkDelete}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs font-bold transition-colors ml-auto">
-                      <Trash2 size={12} /> Izbriši označene ({selectedIds.size})
+                  <div className="flex items-center gap-2 ml-auto">
+                    <button onClick={() => handleCheckFiltered(filteredProducts)}
+                      disabled={filteredProducts.length === 0 || checkingId === "all" || checkingId === "filtered"}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white rounded-xl text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                      <RefreshCw size={12} className={checkingId === "filtered" ? "animate-spin" : ""} />
+                      Preveri prikazane ({filteredProducts.length})
                     </button>
-                  )}
+                    {selectedIds.size > 0 && (
+                      <button onClick={handleBulkDelete}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs font-bold transition-colors">
+                        <Trash2 size={12} /> Izbriši označene ({selectedIds.size})
+                      </button>
+                    )}
+                  </div>
                 </div>
                 {/* Filtered product list */}
                 {(() => {
-                  const filtered = products.filter(p => {
-                    const stockOk = filterStock === "all" || (filterStock === "in_stock" ? p.in_stock : !p.in_stock);
-                    const storeOk = filterStore === "all" || detectStoreFromProduct(p) === filterStore;
-                    return stockOk && storeOk;
-                  });
-                  const allFilteredSelected = filtered.length > 0 && filtered.every(p => selectedIds.has(p.id));
+                  const allFilteredSelected = filteredProducts.length > 0 && filteredProducts.every(p => selectedIds.has(p.id));
                   return (
                     <>
-                      {filtered.length > 0 && (
+                      {filteredProducts.length > 0 && (
                         <div className="flex items-center gap-2 mb-3">
                           <label className="flex items-center gap-2 cursor-pointer text-xs text-gray-500 font-semibold select-none">
                             <input type="checkbox" checked={allFilteredSelected}
-                              onChange={() => toggleSelectAll(filtered)}
+                              onChange={() => toggleSelectAll(filteredProducts)}
                               className="w-4 h-4 rounded border-gray-300 accent-gray-900 cursor-pointer" />
-                            Označi vse ({filtered.length})
+                            Označi vse ({filteredProducts.length})
                           </label>
                         </div>
                       )}
-                      {filtered.length === 0 ? (
+                      {filteredProducts.length === 0 ? (
                         <div className="text-center py-12 text-gray-400">
                           <Search size={28} className="mx-auto mb-2 opacity-40" />
                           <p className="text-sm">Ni rezultatov za izbrane filtre</p>
                         </div>
                       ) : (
                         <div className="grid gap-4 sm:grid-cols-2 pb-8">
-                          {filtered.map(p => (
+                          {filteredProducts.map(p => (
                             <ProductCard key={p.id} product={p} onCheck={handleCheck} onDelete={handleDelete}
                               onEdit={setEditProduct} checking={checkingId === p.id}
                               selected={selectedIds.has(p.id)}
