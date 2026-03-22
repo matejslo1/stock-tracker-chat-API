@@ -15,6 +15,11 @@ const { buildCartForProducts } = require("./utils/cart-builder");
 const { decodeCartItems } = require("./utils/pikazard-cart");
 const { detectStoreFromUrl } = require("./utils/storeDetection");
 
+const resolvePreferredStore = (url, requestedStore) => {
+  const detectedStore = detectStoreFromUrl(url);
+  return detectedStore !== "custom" ? detectedStore : (requestedStore || "custom");
+};
+
 
 // Cron scheduling (global stock check) with dynamic interval from app_settings
 let globalCheckJob = null;
@@ -103,10 +108,11 @@ app.post("/api/products", async (req, res) => {
       u.hash = '';
       url = u.toString();
     } catch(e) {}
+    const resolvedStore = resolvePreferredStore(url, store);
     const result = db.prepare(
       `INSERT INTO products (name, url, store, target_price, auto_purchase, notify_on_stock, notify_on_price_drop, check_interval_minutes, max_order_qty)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(name, url, store || "custom", target_price || null,
+    ).run(name, url, resolvedStore, target_price || null,
       auto_purchase ? 1 : 0, notify_on_stock !== false ? 1 : 0,
       notify_on_price_drop ? 1 : 0, check_interval_minutes || 0,
       max_order_qty || 1);
@@ -134,9 +140,10 @@ app.post("/api/products/bulk-delete", (req, res) => {
 app.put("/api/products/:id", (req, res) => {
   try {
     const { name, url, store, target_price, auto_purchase, notify_on_stock, notify_on_price_drop, check_interval_minutes, max_order_qty } = req.body;
+    const resolvedStore = resolvePreferredStore(url, store);
     db.prepare(
       `UPDATE products SET name=?, url=?, store=?, target_price=?, auto_purchase=?, notify_on_stock=?, notify_on_price_drop=?, check_interval_minutes=?, max_order_qty=?, updated_at=datetime('now') WHERE id=?`
-    ).run(name, url, store, target_price || null,
+    ).run(name, url, resolvedStore, target_price || null,
       auto_purchase ? 1 : 0, notify_on_stock ? 1 : 0,
       notify_on_price_drop ? 1 : 0, check_interval_minutes || 0,
       max_order_qty || 1,

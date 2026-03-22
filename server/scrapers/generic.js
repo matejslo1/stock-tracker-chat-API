@@ -150,13 +150,18 @@ class GenericScraper {
       const selectorResult = this.extractData($, storeConfig, url);
       console.log(`  🎯 Selectors: inStock=${selectorResult.inStock}, rawText="${selectorResult.rawStockText}"`);
 
+      const finalIsPreorder = isPreorder || shoptetResult.isPreorder;
+      const hasAuthoritativeOutOfStock = shopifyResult.inStock === false || jsonLdResult.inStock === false;
+
       // Merge priority: if ANY method says IN STOCK -> in stock
       // product.js false can be wrong (inventory_policy:continue), so HTML/JSON-LD can override
+      // BUT preorder items with authoritative false should stay out of stock.
       const finalInStock =
+        finalIsPreorder && hasAuthoritativeOutOfStock ? false :
         shopifyResult.inStock === true ? true :          // product.js says yes -> trust it
-        jsonLdResult.inStock === true ? true :            // JSON-LD says yes -> trust it  
-        shoptetResult.inStock === true ? true :           // Shoptet availability says yes -> trust it
-        selectorResult.inStock === true ? true :          // HTML selector says yes -> trust it
+        jsonLdResult.inStock === true ? true :           // JSON-LD says yes -> trust it
+        shoptetResult.inStock === true ? true :          // Shoptet availability says yes -> trust it
+        selectorResult.inStock === true ? true :         // HTML selector says yes -> trust it
         shopifyResult.inStock === false && jsonLdResult.inStock === null && shoptetResult.inStock === null && selectorResult.inStock === null ? false : // only product.js voted, said no
         jsonLdResult.inStock !== null ? jsonLdResult.inStock :
         shoptetResult.inStock !== null ? shoptetResult.inStock :
@@ -168,7 +173,7 @@ class GenericScraper {
 
       return {
         inStock: finalInStock,
-        isPreorder: isPreorder || shoptetResult.isPreorder,
+        isPreorder: finalIsPreorder,
         price: finalPrice,
         isShopify,
         variantId: shopifyResult.variantId || null,
