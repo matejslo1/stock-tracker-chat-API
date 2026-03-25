@@ -362,11 +362,99 @@ class KeywordWatcher {
     return products;
   }
 
+  // ─── METHOD 5: mimovrste.com GraphQL (campaign pages) ───
+  async fetchMimovrsteCampaign(searchUrl, keyword) {
+    const products = [];
+    try {
+      const urlObj = new URL(searchUrl);
+      const baseUrl = urlObj.origin;
+      // Extract campaign ID from path: /kampanja/{campaignId}
+      const match = urlObj.pathname.match(/\/kampanja\/([^/?#]+)/);
+      if (!match) return products;
+      const campaignId = match[1];
+
+      const GQL = `query($c: String!, $cat: String) {
+        getCampaign(campaignId: $c, query: { isMobile: false, previewHash: "", abTestVariant: "", bannersPage: "" }) {
+          productCollection(query: { categoryUrlKey: $cat }) {
+            itemsTotalCount
+            items { ... on Product { id title urlKey mainVariant { availability { status } } } }
+          }
+        }
+      }`;
+
+      const fetchCategory = async (categoryUrlKey) => {
+        try {
+          const res = await http.post('https://www.mimovrste.com/web-gateway/graphql', {
+            query: GQL,
+            variables: { c: campaignId, cat: categoryUrlKey || null },
+          }, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Origin': 'https://www.mimovrste.com',
+              'Referer': searchUrl,
+              'User-Agent': this.getRandomUA(),
+            },
+            timeout: 15000, validateStatus: () => true,
+          });
+          const items = res.data?.data?.getCampaign?.productCollection?.items || [];
+          return items
+            .filter(p => p.urlKey && p.title)
+            .filter(p => !keyword || this.isRelevant(p.title, p.urlKey, keyword))
+            .map(p => ({
+              name: p.title,
+              url: `${baseUrl}/proizvod/${p.urlKey}`,
+              price: null,
+              inStock: p.mainVariant?.availability?.status === 'A2' ? true : undefined,
+              image: '',
+            }));
+        } catch(e) { return []; }
+      };
+
+      // First: fetch without category filter (default first page)
+      console.log(`  [5] mimovrste campaign "${campaignId}" - fetching without category...`);
+      const defaultItems = await fetchCategory(null);
+      for (const p of defaultItems) { if (!products.find(x => x.url === p.url)) products.push(p); }
+      console.log(`  [5] Default: ${defaultItems.length} products`);
+
+      // Then: scrape category slugs from campaign page HTML and fetch each
+      try {
+        const pageRes = await http.get(searchUrl, {
+          headers: { 'User-Agent': this.getRandomUA(), 'Accept': 'text/html' },
+          timeout: 10000, validateStatus: () => true,
+        });
+        if (pageRes.status === 200) {
+          const $ = cheerio.load(pageRes.data);
+          const categories = new Set();
+          $(`a[href*="/kampanja/${campaignId}?category="]`).each((_, el) => {
+            const href = $(el).attr('href') || '';
+            const catMatch = href.match(/[?&]category=([^&]+)/);
+            if (catMatch) categories.add(catMatch[1]);
+          });
+          console.log(`  [5] Found ${categories.size} categories: ${[...categories].join(', ')}`);
+          for (const cat of categories) {
+            const items = await fetchCategory(cat);
+            let added = 0;
+            for (const p of items) {
+              if (!products.find(x => x.url === p.url)) { products.push(p); added++; }
+            }
+            console.log(`  [5] Category "${cat}": ${items.length} found, ${added} new (total: ${products.length})`);
+            await new Promise(r => setTimeout(r, 400));
+          }
+        }
+      } catch(e) { console.log(`  [5] Category scrape error: ${e.message}`); }
+
+      console.log(`  [5] ✅ mimovrste total: ${products.length} products`);
+    } catch(e) { console.log(`  [5] ⚠️  ${e.message}`); }
+    return products;
+  }
+
   // ─── ORCHESTRATOR ───
   async scrapeSearchResults(searchUrl, storeName, keyword) {
     const baseUrl = (() => { try { return new URL(searchUrl).origin; } catch(e) { return ''; } })();
     // tcgstar and pokedom are Shopify-based stores and support the same product.js API
     const isShopify = ['shopify', 'tcgstar', 'pokedom'].includes(storeName);
+    const isMimovrste = storeName === 'mimovrste' || baseUrl.includes('mimovrste.com');
+    const isMimovrsteCampaign = isMimovrste && searchUrl.includes('/kampanja/');
     const seen = new Set();
     const allProducts = [];
     // merge: first source wins for new URLs, BUT later sources can UPDATE price/stock if they have better data
@@ -387,7 +475,11 @@ class KeywordWatcher {
       }
     };
 
-    if (isShopify && baseUrl) {
+    if (isMimovrsteCampaign) {
+      // 5. mimovrste GraphQL campaign API
+      merge(await this.fetchMimovrsteCampaign(searchUrl, keyword));
+      console.log(`  After [5]: ${allProducts.length}`);
+    } else if (isShopify && baseUrl) {
       // 1. suggest.json (fast, up to 250 results)
       // 1. suggest.json first (fast discovery, but prices may be inaccurate - lowest variant in cents)
       merge(await this.fetchShopifySuggest(baseUrl, keyword));
@@ -402,9 +494,11 @@ class KeywordWatcher {
       console.log(`  After [3]: ${allProducts.length}`);
     }
 
-    // 4. HTML search page — always run to supplement API results
-    merge(await this.scrapeSearchHtml(searchUrl, keyword), { overwritePrice: true });
-    console.log(`  After [4]: ${allProducts.length}`);
+    // 4. HTML search page — skip for mimovrste campaign (JS-rendered, no products in HTML)
+    if (!isMimovrsteCampaign) {
+      merge(await this.scrapeSearchHtml(searchUrl, keyword), { overwritePrice: true });
+      console.log(`  After [4]: ${allProducts.length}`);
+    }
 
     console.log(`  📊 TOTAL: ${allProducts.length} products for "${keyword}"`);
     return allProducts;
