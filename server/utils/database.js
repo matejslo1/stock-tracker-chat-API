@@ -291,10 +291,10 @@ async function initDatabase() {
     {
       name: 'mimovrste',
       base_url: 'https://www.mimovrste.com',
-      stock_selector: '.product-availability, .add-to-basket, .availability',
-      price_selector: '.product-price, .price-current, .selling-price',
-      add_to_cart: '.add-to-basket, .btn-add-to-cart',
-      out_of_stock: 'Ni na zalogi,Razprodano,Pričakovano',
+      stock_selector: '.product-availability, .add-to-basket, .availability, .watchdog-button-b',
+      price_selector: '.price__relevant, .product-price__relevant, .product-price, .price-current, .selling-price',
+      add_to_cart: '.add-to-cart-list, .add-to-basket, .btn-add-to-cart',
+      out_of_stock: 'Ni na zalogi,Razprodano,Pričakovano,Trenutno ni na zalogi,Zanima me',
       in_stock: 'Na zalogi,Dobavljivo,V košarico',
       puppeteer: 1,
       config: JSON.stringify({ locale: 'si' })
@@ -380,7 +380,7 @@ async function initDatabase() {
 
   // TCG-specific stores always get updated (OR REPLACE) so selector fixes are applied to existing DBs.
   // Other stores use OR IGNORE to avoid overwriting user customisations.
-  const managedStores = ['tcgstar', 'pikazard', 'pokedom'];
+  const managedStores = ['tcgstar', 'pikazard', 'pokedom', 'mimovrste'];
   defaultStores.forEach(store => {
     try {
       const verb = managedStores.includes(store.name) ? 'OR REPLACE' : 'OR IGNORE';

@@ -356,7 +356,7 @@ class GenericScraper {
       const browser = await this.getBrowser();
       if (!browser) return null;
       page = await browser.newPage();
-      await page.setUserAgent(this.getRandomUA());
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
       await page.setViewport({ width: 1920, height: 1080 });
       await page.setRequestInterception(true);
       page.on('request', (req) => {
@@ -364,16 +364,23 @@ class GenericScraper {
         if (['image', 'stylesheet', 'font', 'media'].includes(type)) req.abort();
         else req.continue();
       });
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await new Promise(r => setTimeout(r, 3000));
+      await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+      // Wait for at least one of the key elements to appear (Nuxt/Vue rendering)
+      try {
+        await page.waitForSelector('.price__relevant, .product-price__relevant, .add-to-cart-list, .watchdog-button-b', { timeout: 15000 });
+      } catch (e) {
+        console.log(`    [Browser] Timeout waiting for product selectors on ${url}`);
+      }
+      await new Promise(r => setTimeout(r, 2000));
       const html = await page.content();
       const $ = cheerio.load(html);
-
       const pageData = await page.evaluate((selectors) => {
         const result = {};
         if (selectors.stock) {
-          const stockEl = document.querySelector(selectors.stock.split(',')[0].trim());
-          result.stockText = stockEl ? stockEl.textContent.trim() : '';
+          for (const sel of selectors.stock.split(',')) {
+            const el = document.querySelector(sel.trim());
+            if (el) { result.stockText = el.textContent.trim(); break; }
+          }
         }
         if (selectors.price) {
           for (const sel of selectors.price.split(',')) {

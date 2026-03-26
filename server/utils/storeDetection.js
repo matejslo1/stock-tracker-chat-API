@@ -37,7 +37,7 @@ function detectStoreFromUrl(rawUrl) {
 
     // ── Other Slovenian stores ──
     if (hostname === 'bigbang.si')    return 'bigbang';
-    if (hostname === 'mimovrste.com') return 'mimovrste';
+    if (hostname === 'mimovrste.com' || hostname === 'mimovrste.si') return 'mimovrste';
 
     // ── Amazon (any country domain) ──
     if (hostname.startsWith('amazon.') || hostname.includes('.amazon.')) return 'amazon';

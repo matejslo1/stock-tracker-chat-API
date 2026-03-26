@@ -64,7 +64,7 @@ class KeywordWatcher {
     } catch (e) { /* ignore and fall back */ }
     if (hostname.includes('amazon')) return `${baseUrl}/s?k=${keyword}`;
     if (hostname.includes('bigbang')) return `${baseUrl}/iskanje?q=${keyword}`;
-    if (hostname.includes('mimovrste')) return `${baseUrl}/iskanje?q=${keyword}`;
+    if (hostname.includes('mimovrste')) return `${baseUrl}/iskanje?s=${keyword}`;
     if (hostname.includes('pikazard.eu')) return `${baseUrl}/vyhladavanie/?string=${keyword}`;
     // Shopify stores: use options[prefix]=last for broader prefix matching
     return `${baseUrl}/search?options%5Bprefix%5D=last&q=${keyword}&type=product`;
@@ -448,17 +448,118 @@ class KeywordWatcher {
     return products;
   }
 
+  async getBrowser() {
+    if (!this.browser) {
+      try {
+        const puppeteer = require('puppeteer');
+        this.browser = await puppeteer.launch({
+          headless: 'new',
+          args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu','--window-size=1920,1080']
+        });
+      } catch (e) {
+        console.warn('Puppeteer not available for keyword search');
+        return null;
+      }
+    }
+    return this.browser;
+  }
+
+  async scrapeSearchPuppeteer(searchUrl, keyword) {
+    const products = [];
+    const seen = new Set();
+    let page = null;
+    try {
+      const browser = await this.getBrowser();
+      if (!browser) return products;
+      page = await browser.newPage();
+      await page.setUserAgent(this.getRandomUA());
+      await page.setViewport({ width: 1920, height: 1080 });
+      
+      console.log(`  [P] Opening Puppeteer search: ${searchUrl}`);
+      await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      // Wait for product titles to appear (Vue rendering)
+      try { await page.waitForSelector('.pb-brief__title-wrap', { timeout: 10000 }); } catch(e) { console.log('  [P] Timeout waiting for products'); }
+      await new Promise(r => setTimeout(r, 2000));
+
+      const pageData = await page.evaluate((kw) => {
+        const results = [];
+        const items = document.querySelectorAll('.pb-brief__title-wrap, .product-item, .pb-brief__desktop');
+        const seenHrefs = new Set();
+
+        items.forEach(el => {
+          let href = '';
+          let name = '';
+          let priceText = '';
+          let image = '';
+
+          // Find name and link
+          const linkEl = el.closest('a') || el.querySelector('a') || el;
+          if (linkEl.href) {
+            href = linkEl.href.split('?')[0];
+            name = linkEl.textContent.trim();
+          }
+
+          // If we found a link, look for sibling or child price
+          if (href && !seenHrefs.has(href)) {
+            const container = el.closest('.product-item') || el.parentElement?.parentElement;
+            if (container) {
+              const priceEl = container.querySelector('.pb-price__discounts, .price__relevant, .product-price__relevant, .price-main, .price');
+              if (priceEl) priceText = priceEl.textContent.trim();
+              const imgEl = container.querySelector('img');
+              if (imgEl) image = imgEl.src;
+            }
+            if (name && href) {
+              results.push({ name, url: href, priceText, image });
+              seenHrefs.add(href);
+            }
+          }
+        });
+        return results;
+      }, keyword);
+
+      const baseUrl = new URL(searchUrl).origin;
+      for (const p of pageData) {
+        if (!p.name || !this.isRelevant(p.name, p.url, keyword)) continue;
+        const fullUrl = p.url.startsWith('http') ? p.url : `${baseUrl}${p.url.startsWith('/') ? '' : '/'}${p.url}`;
+        if (seen.has(fullUrl)) continue;
+        seen.add(fullUrl);
+        
+        // Parse price
+        let price = null;
+        if (p.priceText) {
+          const pt = p.priceText.replace(/[^0-9.,]/g, '').replace(',', '.').trim();
+          price = parseFloat(pt);
+        }
+
+        products.push({
+          name: p.name.substring(0, 200),
+          url: fullUrl,
+          price: isNaN(price) ? null : price,
+          inStock: undefined, // Puppeteer search doesn't easily show stock for all items
+          image: p.image,
+        });
+      }
+      console.log(`  [P] Puppeteer found ${products.length} products`);
+    } catch (e) {
+      console.error(`  [P] Puppeteer search failed: ${e.message}`);
+    } finally {
+      if (page) await page.close().catch(() => {});
+    }
+    return products;
+  }
+
   // ─── ORCHESTRATOR ───
   async scrapeSearchResults(searchUrl, storeName, keyword) {
     const baseUrl = (() => { try { return new URL(searchUrl).origin; } catch(e) { return ''; } })();
     // tcgstar and pokedom are Shopify-based stores and support the same product.js API
     const isShopify = ['shopify', 'tcgstar', 'pokedom'].includes(storeName);
-    const isMimovrste = storeName === 'mimovrste' || baseUrl.includes('mimovrste.com');
+    const isMimovrste = storeName === 'mimovrste' || baseUrl.includes('mimovrste.com') || baseUrl.includes('mimovrste.si');
     const isMimovrsteCampaign = isMimovrste && searchUrl.includes('/kampanja/');
     const seen = new Set();
     const allProducts = [];
     // merge: first source wins for new URLs, BUT later sources can UPDATE price/stock if they have better data
     const merge = (list, { overwritePrice = false } = {}) => {
+      if (!list) return;
       for (const p of list) {
         if (!seen.has(p.url)) {
           seen.add(p.url);
@@ -479,6 +580,10 @@ class KeywordWatcher {
       // 5. mimovrste GraphQL campaign API
       merge(await this.fetchMimovrsteCampaign(searchUrl, keyword));
       console.log(`  After [5]: ${allProducts.length}`);
+    } else if (isMimovrste) {
+      // Use Puppeteer for mimovrste regular search as it's JS-rendered
+      merge(await this.scrapeSearchPuppeteer(searchUrl, keyword));
+      console.log(`  After [P]: ${allProducts.length}`);
     } else if (isShopify && baseUrl) {
       // 1. suggest.json (fast, up to 250 results)
       // 1. suggest.json first (fast discovery, but prices may be inaccurate - lowest variant in cents)
