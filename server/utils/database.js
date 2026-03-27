@@ -208,6 +208,11 @@ async function initDatabase() {
       last_checked TEXT,
       last_found_count INTEGER DEFAULT 0,
       active INTEGER DEFAULT 1,
+      check_interval_minutes INTEGER DEFAULT 0,
+      min_price REAL DEFAULT NULL,
+      max_price REAL DEFAULT NULL,
+      include_keywords TEXT DEFAULT NULL,
+      exclude_keywords TEXT DEFAULT NULL,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     )
@@ -229,6 +234,8 @@ async function initDatabase() {
       check_interval_minutes INTEGER DEFAULT 0,
       min_price REAL DEFAULT NULL,
       max_price REAL DEFAULT NULL,
+      include_keywords TEXT DEFAULT NULL,
+      exclude_keywords TEXT DEFAULT NULL,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     )
@@ -245,6 +252,10 @@ async function initDatabase() {
   try { db.run("ALTER TABLE category_watches ADD COLUMN check_interval_minutes INTEGER DEFAULT 0"); } catch(e) {}
   try { db.run("ALTER TABLE category_watches ADD COLUMN min_price REAL DEFAULT NULL"); } catch(e) {}
   try { db.run("ALTER TABLE category_watches ADD COLUMN max_price REAL DEFAULT NULL"); } catch(e) {}
+  try { db.run("ALTER TABLE keyword_watches ADD COLUMN include_keywords TEXT DEFAULT NULL"); } catch(e) {}
+  try { db.run("ALTER TABLE keyword_watches ADD COLUMN exclude_keywords TEXT DEFAULT NULL"); } catch(e) {}
+  try { db.run("ALTER TABLE category_watches ADD COLUMN include_keywords TEXT DEFAULT NULL"); } catch(e) {}
+  try { db.run("ALTER TABLE category_watches ADD COLUMN exclude_keywords TEXT DEFAULT NULL"); } catch(e) {}
 
   // Migration: fix products where store = hostname (e.g. 'tcgstar.eu') instead of valid store name
   // Auto-upgrade to the correct built-in store based on the URL/domain.

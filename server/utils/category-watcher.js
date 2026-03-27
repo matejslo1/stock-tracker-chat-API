@@ -331,9 +331,29 @@ class CategoryWatcher {
 
     const minPrice = watch.min_price ? parseFloat(watch.min_price) : null;
     const maxPrice = watch.max_price ? parseFloat(watch.max_price) : null;
+
+    const includeList = watch.include_keywords ? watch.include_keywords.split(',').map(k => k.trim().toLowerCase()).filter(k => k) : [];
+    const excludeList = watch.exclude_keywords ? watch.exclude_keywords.split(',').map(k => k.trim().toLowerCase()).filter(k => k) : [];
+
     const filteredProducts = foundProducts.filter((product) => {
+      // 1. Price filters
       if (minPrice !== null && product.price !== null && product.price !== undefined && product.price < minPrice) return false;
       if (maxPrice !== null && product.price !== null && product.price !== undefined && product.price > maxPrice) return false;
+
+      const name = (product.name || '').toLowerCase();
+
+      // 2. Include keywords (at least one must match if list is not empty)
+      if (includeList.length > 0) {
+        const hasInclude = includeList.some(k => name.includes(k));
+        if (!hasInclude) return false;
+      }
+
+      // 3. Exclude keywords (none must match)
+      if (excludeList.length > 0) {
+        const hasExclude = excludeList.some(k => name.includes(k));
+        if (hasExclude) return false;
+      }
+
       return true;
     });
     const newProducts = filteredProducts.filter(product => !knownUrls.includes(product.url));

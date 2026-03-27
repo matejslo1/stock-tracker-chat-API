@@ -603,18 +603,38 @@ class KeywordWatcher {
     let knownStockMap = {};
     try { knownStockMap = JSON.parse(watch.known_stock_map || '{}'); } catch(e) {}
 
-    // Apply price filters if set
+    // Apply price and keyword filters
     const minPrice = watch.min_price ? parseFloat(watch.min_price) : null;
     const maxPrice = watch.max_price ? parseFloat(watch.max_price) : null;
-    const priceFilteredProducts = foundProducts.filter(p => {
+    
+    const includeList = watch.include_keywords ? watch.include_keywords.split(',').map(k => k.trim().toLowerCase()).filter(k => k) : [];
+    const excludeList = watch.exclude_keywords ? watch.exclude_keywords.split(',').map(k => k.trim().toLowerCase()).filter(k => k) : [];
+
+    const filteredProducts = foundProducts.filter(p => {
+      // 1. Price filters
       if (minPrice !== null && p.price !== null && p.price !== undefined && p.price < minPrice) return false;
       if (maxPrice !== null && p.price !== null && p.price !== undefined && p.price > maxPrice) return false;
+
+      const name = (p.name || '').toLowerCase();
+
+      // 2. Include keywords
+      if (includeList.length > 0) {
+        const hasInclude = includeList.some(k => name.includes(k));
+        if (!hasInclude) return false;
+      }
+
+      // 3. Exclude keywords
+      if (excludeList.length > 0) {
+        const hasExclude = excludeList.some(k => name.includes(k));
+        if (hasExclude) return false;
+      }
+
       return true;
     });
-    if (minPrice !== null || maxPrice !== null) {
-      console.log(`  Price filter (min:${minPrice} max:${maxPrice}): ${foundProducts.length} -> ${priceFilteredProducts.length} products`);
+
+    if (minPrice !== null || maxPrice !== null || includeList.length > 0 || excludeList.length > 0) {
+      console.log(`  Filters applied: ${foundProducts.length} -> ${filteredProducts.length} products`);
     }
-    const filteredProducts = priceFilteredProducts;
 
     const newProducts = filteredProducts.filter(p => !knownUrls.includes(p.url));
     console.log(`  Found ${foundProducts.length} products, ${newProducts.length} new`);

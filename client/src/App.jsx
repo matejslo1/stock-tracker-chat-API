@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Package, Plus, RefreshCw, Bell, Settings, Trash2, Eye, Edit3, Send, ShoppingCart, TrendingDown, Activity, X, Check, AlertTriangle, ExternalLink, Clock, Zap, ChevronDown, ChevronUp, Search, BarChart3, Key, Save, ShoppingBag, Link } from "lucide-react";
+import { Package, Plus, Minus, RefreshCw, Bell, Settings, Trash2, Eye, Edit3, Send, ShoppingCart, TrendingDown, Activity, X, Check, AlertTriangle, ExternalLink, Clock, Zap, ChevronDown, ChevronUp, Search, BarChart3, Key, Save, ShoppingBag, Link } from "lucide-react";
 
 
 // API helper: attaches x-api-key header when VITE_API_KEY is set
@@ -499,6 +499,8 @@ const KeywordModal = ({ watch, onSave, onClose, appSettings }) => {
     check_interval_minutes: watch?.check_interval_minutes != null ? String(watch.check_interval_minutes) : "0",
     min_price: watch?.min_price != null ? String(watch.min_price) : "",
     max_price: watch?.max_price != null ? String(watch.max_price) : "",
+    include_keywords: watch?.include_keywords || "",
+    exclude_keywords: watch?.exclude_keywords || "",
   });
 
   const handleSubmit = () => {
@@ -555,6 +557,38 @@ const KeywordModal = ({ watch, onSave, onClose, appSettings }) => {
             </div>
             <p className="text-xs text-gray-400 mt-1">0 = uporabi globalni interval iz nastavitev</p>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-semibold text-gray-700 mb-1 block">Min cena (EUR)</label>
+              <input type="number" step="0.01" value={form.min_price} onChange={e => setForm(f => ({ ...f, min_price: e.target.value }))}
+                placeholder="0.00"
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all" />
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-gray-700 mb-1 block">Max cena (EUR)</label>
+              <input type="number" step="0.01" value={form.max_price} onChange={e => setForm(f => ({ ...f, max_price: e.target.value }))}
+                placeholder="Pusti prazno"
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-semibold text-gray-700 mb-1 block flex items-center gap-1">
+                <Plus size={14} className="text-emerald-500" /> Vključi ključne besede
+              </label>
+              <input type="text" value={form.include_keywords} onChange={e => setForm(f => ({ ...f, include_keywords: e.target.value }))}
+                placeholder="npr. apple, mac"
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none text-sm transition-all" />
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-gray-700 mb-1 block flex items-center gap-1">
+                <Minus size={14} className="text-red-500" /> Izključi ključne besede
+              </label>
+              <input type="text" value={form.exclude_keywords} onChange={e => setForm(f => ({ ...f, exclude_keywords: e.target.value }))}
+                placeholder="npr. case, cover"
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none text-sm transition-all" />
+            </div>
+          </div>
           <div className="space-y-3 pt-2">
             {toggleFields.map(({ key, icon, label, color }) => (
               <label key={key} className="flex items-center gap-3 cursor-pointer group">
@@ -592,6 +626,8 @@ const CategoryModal = ({ watch, onSave, onClose, appSettings }) => {
     check_interval_minutes: watch?.check_interval_minutes != null ? String(watch.check_interval_minutes) : "0",
     min_price: watch?.min_price != null ? String(watch.min_price) : "",
     max_price: watch?.max_price != null ? String(watch.max_price) : "",
+    include_keywords: watch?.include_keywords || "",
+    exclude_keywords: watch?.exclude_keywords || "",
   });
 
   const handleSubmit = () => {
@@ -652,6 +688,24 @@ const CategoryModal = ({ watch, onSave, onClose, appSettings }) => {
                 value={form.max_price}
                 onChange={e => setForm(f => ({ ...f, max_price: e.target.value }))}
                 className="w-28 px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-semibold text-gray-700 mb-1 block flex items-center gap-1">
+                <Plus size={14} className="text-emerald-500" /> Vključi ključne besede
+              </label>
+              <input type="text" value={form.include_keywords} onChange={e => setForm(f => ({ ...f, include_keywords: e.target.value }))}
+                placeholder="npr. apple, mac"
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none text-sm transition-all" />
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-gray-700 mb-1 block flex items-center gap-1">
+                <Minus size={14} className="text-red-500" /> Izključi ključne besede
+              </label>
+              <input type="text" value={form.exclude_keywords} onChange={e => setForm(f => ({ ...f, exclude_keywords: e.target.value }))}
+                placeholder="npr. case, cover"
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none text-sm transition-all" />
             </div>
           </div>
           <div className="space-y-3 pt-2">
