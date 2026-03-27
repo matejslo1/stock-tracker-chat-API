@@ -117,6 +117,47 @@ class CategoryWatcher {
     const products = [];
     const seen = new Set();
     const baseUrl = (() => { try { return new URL(categoryUrl).origin; } catch (e) { return ''; } })();
+    const blocklistedPathHints = ['/collections/', '/search', '/vyhladavanie/', '/vyhledavani/', '/znacka/', '/tag/', '/blog/', '/cart/', '/kosik/', '/kosik', '/kontakt', '/gdpr'];
+    const likelyPriceText = (text) => /\d+\s*(?:,|\.)?\d*\s*€/.test(text || '');
+    const likelyAvailabilityText = (text) => /(skladom|vypredan|predobjed|do koš|do kos|detail|na objedn|dostupn)/i.test(text || '');
+
+    const collectFromLink = ($, linkEl) => {
+      const href = $(linkEl).attr('href') || '';
+      if (!this.isLikelyProductUrl(href)) return false;
+
+      const fullUrl = this.normalizeUrl(baseUrl, href);
+      if (seen.has(fullUrl)) return false;
+
+      const container = $(linkEl).closest('.product, .p, .product-item, .products-block > div, .products .item, li, article, .card, .box');
+      const containerText = container.text().replace(/\s+/g, ' ').trim();
+      if (!containerText) return false;
+      if (!likelyPriceText(containerText) && !likelyAvailabilityText(containerText)) return false;
+
+      const name = $(linkEl).attr('title')
+        || $(linkEl).text().trim().replace(/\s+/g, ' ')
+        || container.find('h3, h2, .name, .product-name').first().text().trim().replace(/\s+/g, ' ');
+      if (!name) return false;
+
+      const normalizedText = containerText.toLowerCase();
+      const imageEl = container.find('img').first();
+      const image = imageEl.attr('src') || imageEl.attr('data-src') || imageEl.attr('data-srcset') || '';
+      const hasSoldOut = normalizedText.includes('vypredan')
+        || normalizedText.includes('nie je skladom')
+        || normalizedText.includes('nedostupn');
+      const hasInStock = normalizedText.includes('skladom')
+        || normalizedText.includes('do košíka')
+        || normalizedText.includes('do kosika');
+
+      seen.add(fullUrl);
+      products.push({
+        name: name.substring(0, 200),
+        url: fullUrl,
+        price: this.extractPrice(container),
+        inStock: hasSoldOut ? false : hasInStock ? true : undefined,
+        image: image.startsWith('//') ? `https:${image}` : image,
+      });
+      return true;
+    };
 
     const scrapePage = async (pageUrl) => {
       try {
@@ -195,6 +236,15 @@ class CategoryWatcher {
             image: image.startsWith('//') ? `https:${image}` : image,
           });
           pageProducts++;
+        });
+
+        // 3. Generic anchor fallback for Shoptet-like category pages (e.g. pikazard.eu)
+        resultRoot.find('a[href]').each((_, el) => {
+          const href = $(el).attr('href') || '';
+          const lowerHref = href.toLowerCase();
+          if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
+          if (blocklistedPathHints.some(part => lowerHref.includes(part))) return;
+          if (collectFromLink($, el)) pageProducts++;
         });
 
         const nextLink = $('a[href*="page="]').filter((_, el) => {
