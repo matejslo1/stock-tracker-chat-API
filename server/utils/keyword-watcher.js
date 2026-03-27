@@ -21,6 +21,22 @@ class KeywordWatcher {
     return this.userAgents[Math.floor(Math.random() * this.userAgents.length)];
   }
 
+  normalizeText(value) {
+    return String(value || '')
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '');
+  }
+
+  matchesKeywordFilters(product, includeList, excludeList) {
+    const haystack = this.normalizeText(`${product?.name || ''} ${product?.url || ''}`);
+
+    if (includeList.length > 0 && !includeList.some((keyword) => haystack.includes(keyword))) return false;
+    if (excludeList.length > 0 && excludeList.some((keyword) => haystack.includes(keyword))) return false;
+
+    return true;
+  }
+
   // Check if product name OR url slug contains any keyword word
   isRelevant(productName, productUrl, keyword) {
     if (!keyword) return true;
@@ -607,29 +623,15 @@ class KeywordWatcher {
     const minPrice = watch.min_price ? parseFloat(watch.min_price) : null;
     const maxPrice = watch.max_price ? parseFloat(watch.max_price) : null;
     
-    const includeList = watch.include_keywords ? watch.include_keywords.split(',').map(k => k.trim().toLowerCase()).filter(k => k) : [];
-    const excludeList = watch.exclude_keywords ? watch.exclude_keywords.split(',').map(k => k.trim().toLowerCase()).filter(k => k) : [];
+    const includeList = watch.include_keywords ? watch.include_keywords.split(',').map(k => this.normalizeText(k.trim())).filter(k => k) : [];
+    const excludeList = watch.exclude_keywords ? watch.exclude_keywords.split(',').map(k => this.normalizeText(k.trim())).filter(k => k) : [];
 
     const filteredProducts = foundProducts.filter(p => {
       // 1. Price filters
       if (minPrice !== null && p.price !== null && p.price !== undefined && p.price < minPrice) return false;
       if (maxPrice !== null && p.price !== null && p.price !== undefined && p.price > maxPrice) return false;
 
-      const name = (p.name || '').toLowerCase();
-
-      // 2. Include keywords
-      if (includeList.length > 0) {
-        const hasInclude = includeList.some(k => name.includes(k));
-        if (!hasInclude) return false;
-      }
-
-      // 3. Exclude keywords
-      if (excludeList.length > 0) {
-        const hasExclude = excludeList.some(k => name.includes(k));
-        if (hasExclude) return false;
-      }
-
-      return true;
+      return this.matchesKeywordFilters(p, includeList, excludeList);
     });
 
     if (minPrice !== null || maxPrice !== null || includeList.length > 0 || excludeList.length > 0) {
@@ -663,15 +665,38 @@ class KeywordWatcher {
               const row = db.prepare("SELECT value FROM app_settings WHERE key = 'check_interval_minutes'").get();
               globalCheckInterval = parseInt(row?.value || '0') || 0;
             } catch(e) {}
-            const ins = db.prepare(`INSERT INTO products (name, url, store, current_price, notify_on_stock, notify_on_price_drop, check_interval_minutes, image_url) VALUES (?, ?, ?, ?, 1, 1, ?, ?)`)
-              .run(product.name, product.url, productStore, product.price, globalCheckInterval, product.image);
+            const ins = db.prepare(`
+              INSERT INTO products (name, url, store, current_price, in_stock, is_preorder, notify_on_stock, notify_on_price_drop, check_interval_minutes, image_url)
+              VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?, ?)
+            `).run(
+              product.name,
+              product.url,
+              productStore,
+              product.price,
+              product.inStock === undefined ? null : (product.inStock ? 1 : 0),
+              product.isPreorder ? 1 : 0,
+              globalCheckInterval,
+              product.image
+            );
             console.log(`    ➕ Auto-added: ${product.name}`);
             const newP = db.prepare('SELECT * FROM products WHERE id = ?').get(ins.lastInsertRowid);
             if (newP) toCheck.push(newP);
           } else {
             // Add to discovered items for manual review
-            db.prepare(`INSERT OR IGNORE INTO found_items (name, url, price, store, image_url, source_type, source_id) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-              .run(product.name, product.url, product.price, productStore, product.image, 'keyword', watch.id);
+            db.prepare(`
+              INSERT OR IGNORE INTO found_items (name, url, price, store, image_url, in_stock, is_preorder, source_type, source_id)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              product.name,
+              product.url,
+              product.price,
+              productStore,
+              product.image,
+              product.inStock === undefined ? null : (product.inStock ? 1 : 0),
+              product.isPreorder ? 1 : 0,
+              'keyword',
+              watch.id
+            );
             console.log(`    🔍 Discovered: ${product.name}`);
           }
         } catch(e) { console.error('Error adding new product:', e.message); }
@@ -698,9 +723,8 @@ class KeywordWatcher {
     // Update known maps
     filteredProducts.forEach(p => { if (p.inStock !== undefined) knownStockMap[p.url] = p.inStock; });
     const trackedUrls = db.prepare('SELECT url FROM products').all().map(p => p.url);
-    // Only mark as "known" products that are currently tracked in the products table.
-    // Products not in the table (deleted or never auto-added) will be re-discovered next check.
-    const allKnownUrls = [...new Set([...filteredProducts.filter(p => trackedUrls.includes(p.url)).map(p => p.url)])];
+    const discoveredUrls = db.prepare("SELECT url FROM found_items WHERE source_type = 'keyword' AND source_id = ?").all(watch.id).map(p => p.url);
+    const allKnownUrls = [...new Set([...filteredProducts.map(p => p.url), ...trackedUrls, ...discoveredUrls])];
 
     db.prepare(`UPDATE keyword_watches SET known_product_urls=?, known_stock_map=?, last_checked=datetime('now'), last_found_count=?, updated_at=datetime('now') WHERE id=?`)
       .run(JSON.stringify(allKnownUrls), JSON.stringify(knownStockMap), filteredProducts.length, watch.id);

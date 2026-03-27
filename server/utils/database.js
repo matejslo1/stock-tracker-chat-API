@@ -413,6 +413,8 @@ async function initDatabase() {
       price REAL,
       store TEXT NOT NULL,
       image_url TEXT,
+      in_stock INTEGER DEFAULT NULL,
+      is_preorder INTEGER DEFAULT 0,
       source_type TEXT, -- 'keyword' or 'category'
       source_id INTEGER,
       status TEXT DEFAULT 'new',
@@ -424,6 +426,8 @@ async function initDatabase() {
   // Migration: add source_type, source_id if not exists
   try { db.run("ALTER TABLE found_items ADD COLUMN source_type TEXT"); } catch(e) {}
   try { db.run("ALTER TABLE found_items ADD COLUMN source_id INTEGER"); } catch(e) {}
+  try { db.run("ALTER TABLE found_items ADD COLUMN in_stock INTEGER DEFAULT NULL"); } catch(e) {}
+  try { db.run("ALTER TABLE found_items ADD COLUMN is_preorder INTEGER DEFAULT 0"); } catch(e) {}
 
   // Helpful indexes (speed up filtering & history lookups)
   // NOTE: create indexes AFTER ALL tables exist. Otherwise a fresh DB will crash.

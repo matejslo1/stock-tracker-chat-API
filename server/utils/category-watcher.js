@@ -21,6 +21,22 @@ class CategoryWatcher {
     return this.userAgents[Math.floor(Math.random() * this.userAgents.length)];
   }
 
+  normalizeText(value) {
+    return String(value || '')
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '');
+  }
+
+  matchesKeywordFilters(product, includeList, excludeList) {
+    const haystack = this.normalizeText(`${product?.name || ''} ${product?.url || ''}`);
+
+    if (includeList.length > 0 && !includeList.some((keyword) => haystack.includes(keyword))) return false;
+    if (excludeList.length > 0 && excludeList.some((keyword) => haystack.includes(keyword))) return false;
+
+    return true;
+  }
+
   normalizeUrl(baseUrl, href) {
     try {
       const url = new URL(href, baseUrl);
@@ -294,15 +310,38 @@ class CategoryWatcher {
             const row = db.prepare("SELECT value FROM app_settings WHERE key = 'check_interval_minutes'").get();
             globalCheckInterval = parseInt(row?.value || '0', 10) || 0;
           } catch (e) {}
-          const ins = db.prepare(`INSERT INTO products (name, url, store, current_price, notify_on_stock, notify_on_price_drop, check_interval_minutes, image_url) VALUES (?, ?, ?, ?, 1, 1, ?, ?)`)
-            .run(product.name, product.url, storeName, product.price, globalCheckInterval, product.image);
+          const ins = db.prepare(`
+            INSERT INTO products (name, url, store, current_price, in_stock, is_preorder, notify_on_stock, notify_on_price_drop, check_interval_minutes, image_url)
+            VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?, ?)
+          `).run(
+            product.name,
+            product.url,
+            storeName,
+            product.price,
+            product.inStock === undefined ? null : (product.inStock ? 1 : 0),
+            product.isPreorder ? 1 : 0,
+            globalCheckInterval,
+            product.image
+          );
           const inserted = db.prepare('SELECT * FROM products WHERE id = ?').get(ins.lastInsertRowid);
           if (inserted) toCheck.push(inserted);
           console.log(`    ➕ Auto-added: ${product.name}`);
         } else {
           // Add to discovered items for manual review
-          db.prepare(`INSERT OR IGNORE INTO found_items (name, url, price, store, image_url, source_type, source_id) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-            .run(product.name, product.url, product.price, storeName, product.image, 'category', watch.id);
+          db.prepare(`
+            INSERT OR IGNORE INTO found_items (name, url, price, store, image_url, in_stock, is_preorder, source_type, source_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            product.name,
+            product.url,
+            product.price,
+            storeName,
+            product.image,
+            product.inStock === undefined ? null : (product.inStock ? 1 : 0),
+            product.isPreorder ? 1 : 0,
+            'category',
+            watch.id
+          );
           console.log(`    🔍 Discovered: ${product.name}`);
         }
       } catch (e) { console.error('Error adding new product from category:', e.message); }
@@ -332,29 +371,15 @@ class CategoryWatcher {
     const minPrice = watch.min_price ? parseFloat(watch.min_price) : null;
     const maxPrice = watch.max_price ? parseFloat(watch.max_price) : null;
 
-    const includeList = watch.include_keywords ? watch.include_keywords.split(',').map(k => k.trim().toLowerCase()).filter(k => k) : [];
-    const excludeList = watch.exclude_keywords ? watch.exclude_keywords.split(',').map(k => k.trim().toLowerCase()).filter(k => k) : [];
+    const includeList = watch.include_keywords ? watch.include_keywords.split(',').map(k => this.normalizeText(k.trim())).filter(k => k) : [];
+    const excludeList = watch.exclude_keywords ? watch.exclude_keywords.split(',').map(k => this.normalizeText(k.trim())).filter(k => k) : [];
 
     const filteredProducts = foundProducts.filter((product) => {
       // 1. Price filters
       if (minPrice !== null && product.price !== null && product.price !== undefined && product.price < minPrice) return false;
       if (maxPrice !== null && product.price !== null && product.price !== undefined && product.price > maxPrice) return false;
 
-      const name = (product.name || '').toLowerCase();
-
-      // 2. Include keywords (at least one must match if list is not empty)
-      if (includeList.length > 0) {
-        const hasInclude = includeList.some(k => name.includes(k));
-        if (!hasInclude) return false;
-      }
-
-      // 3. Exclude keywords (none must match)
-      if (excludeList.length > 0) {
-        const hasExclude = excludeList.some(k => name.includes(k));
-        if (hasExclude) return false;
-      }
-
-      return true;
+      return this.matchesKeywordFilters(product, includeList, excludeList);
     });
     const newProducts = filteredProducts.filter(product => !knownUrls.includes(product.url));
 

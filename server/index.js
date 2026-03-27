@@ -644,9 +644,9 @@ app.post("/api/found-items/:id/promote", async (req, res) => {
 
     // Add to products
     const result = db.prepare(
-      `INSERT INTO products (name, url, store, current_price, notify_on_stock, notify_on_price_drop, check_interval_minutes, image_url)
-       VALUES (?, ?, ?, ?, 1, 1, ?, ?)`
-    ).run(item.name, item.url, store, item.price, globalInterval, item.image_url);
+      `INSERT INTO products (name, url, store, current_price, in_stock, is_preorder, notify_on_stock, notify_on_price_drop, check_interval_minutes, image_url)
+       VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?, ?)`
+    ).run(item.name, item.url, store, item.price, item.in_stock, item.is_preorder || 0, globalInterval, item.image_url);
 
     // Remove from found_items
     db.prepare("DELETE FROM found_items WHERE id = ?").run(req.params.id);
@@ -702,9 +702,9 @@ app.post("/api/found-items/bulk-promote", async (req, res) => {
         } catch(e) {}
 
         db.prepare(
-          `INSERT INTO products (name, url, store, current_price, notify_on_stock, notify_on_price_drop, check_interval_minutes, image_url)
-           VALUES (?, ?, ?, ?, 1, 1, ?, ?)`
-        ).run(item.name, item.url, store, item.price, globalInterval, item.image_url);
+          `INSERT INTO products (name, url, store, current_price, in_stock, is_preorder, notify_on_stock, notify_on_price_drop, check_interval_minutes, image_url)
+           VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?, ?)`
+        ).run(item.name, item.url, store, item.price, item.in_stock, item.is_preorder || 0, globalInterval, item.image_url);
 
         db.prepare("DELETE FROM found_items WHERE id = ?").run(id);
         promoted++;

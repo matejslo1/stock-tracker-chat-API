@@ -1142,8 +1142,12 @@ const SettingsTab = ({ telegramSettings, telegramForm, setTelegramForm, savingTe
 // Found Item Card (Discovered from watches)
 const FoundItemCard = ({ item, onPromote, onDelete, selected, onSelect }) => {
   const displayStore = item.store || detectStoreFromProduct(item);
+  const isPreorder = item.is_preorder === 1 || item.is_preorder === true;
+  const hasStockInfo = [0, 1, false, true].includes(item.in_stock);
+  const isInStock = item.in_stock === 1 || item.in_stock === true;
   return (
-    <div className={cn("group relative bg-white rounded-2xl border border-gray-200 transition-all duration-300 overflow-hidden hover:shadow-lg hover:border-orange-300",
+    <div className={cn("group relative bg-white rounded-2xl border transition-all duration-300 overflow-hidden hover:shadow-lg hover:border-orange-300",
+      isPreorder ? "border-amber-200 bg-amber-50/30" : hasStockInfo ? (isInStock ? "border-emerald-200 bg-emerald-50/30" : "border-red-200 bg-red-50/30") : "border-gray-200",
       selected ? "ring-2 ring-orange-500 border-orange-500" : "")}
       onClick={onSelect ? (e) => { if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'A' && e.target.tagName !== 'INPUT') onSelect(); } : undefined}>
       
@@ -1175,6 +1179,7 @@ const FoundItemCard = ({ item, onPromote, onDelete, selected, onSelect }) => {
         <div className="p-4 flex flex-col flex-1">
           <div className="flex items-center gap-2 mb-2 flex-wrap">
             <StoreBrandBadge store={displayStore} />
+            {hasStockInfo && <StockBadge inStock={isInStock} isPreorder={isPreorder} />}
           </div>
           
           <h3 className="font-bold text-gray-900 text-sm leading-snug line-clamp-2 mb-2 flex-1">{item.name}</h3>
@@ -1265,7 +1270,14 @@ const FoundItemsView = ({ items, onPromote, onDelete, onBulkPromote, onBulkDelet
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
               <input type="text" value={search} onChange={e => setSearch(e.target.value)}
                 placeholder="Išči po imenu..."
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 outline-none text-sm transition-all" />
+                className="w-full pl-10 pr-11 py-2.5 rounded-xl border border-gray-200 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 outline-none text-sm transition-all" />
+              {search && (
+                <button onClick={() => setSearch("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                  title="Počisti iskanje">
+                  <X size={14} />
+                </button>
+              )}
             </div>
             
             <div className="flex items-center gap-2">
@@ -1913,7 +1925,7 @@ export default function StockTracker() {
             { label: "Na zalogi", value: inStockCount, icon: <Check size={18} />, color: inStockCount > 0 ? "bg-emerald-500 text-white" : "bg-gray-100 text-gray-600" },
             { label: "Prednaročilo", value: preorderCount, icon: <Clock size={18} />, color: preorderCount > 0 ? "bg-amber-500 text-white" : "bg-gray-100 text-gray-600" },
             { label: "Ni na zalogi", value: outOfStockCount, icon: <X size={18} />, color: "bg-gray-100 text-gray-600" },
-            { label: "Watchi", value: activeWatchCount, icon: <Search size={18} />, color: "bg-gray-100 text-gray-600" },
+            { label: "Sledenja", value: activeWatchCount, icon: <Search size={18} />, color: "bg-gray-100 text-gray-600" },
           ].map((stat, i) => (
             <div key={i} className={cn("rounded-2xl p-4 flex items-center gap-3", stat.color)}>
               {stat.icon}
@@ -1931,7 +1943,7 @@ export default function StockTracker() {
         <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit mb-6 overflow-x-auto">
           {[
             { id: "products", label: "Izdelki", icon: <Package size={14} /> },
-            { id: "keywords", label: "Watchers", icon: <Activity size={14} /> },
+            { id: "keywords", label: "Sledenja", icon: <Activity size={14} /> },
             { id: "discovered_keywords", label: "Rezultati iskanj", icon: <Search size={14} />, count: foundItems.filter(i => i.source_type === 'keyword').length },
             { id: "discovered_categories", label: "Rezultati kategorij", icon: <TrendingDown size={14} />, count: foundItems.filter(i => i.source_type === 'category').length },
             { id: "notifications", label: "Obvestila", icon: <Bell size={14} /> },
