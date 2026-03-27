@@ -1476,6 +1476,9 @@ export default function StockTracker() {
   }, {});
   const quickStoreFilters = [
     { value: "all", label: "Vse", count: statusFilteredProducts.length },
+    { value: "mimovrste", label: "mimovrste", count: storeCounts.mimovrste || 0 },
+    { value: "bigbang", label: "bigbang", count: storeCounts.bigbang || 0 },
+    { value: "amazon", label: "amazon", count: storeCounts.amazon || 0 },
     { value: "pikazard", label: "pikazard", count: storeCounts.pikazard || 0 },
     { value: "pokedom", label: "pokedom", count: storeCounts.pokedom || 0 },
     { value: "tcgstar", label: "tcgstar", count: storeCounts.tcgstar || 0 },
