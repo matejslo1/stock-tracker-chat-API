@@ -4,6 +4,7 @@ const db = require('./database');
 const telegram = require('./telegram');
 const { validateAndNormalizeUrl } = require('./urlSafety');
 const { detectStoreFromUrl } = require('./storeDetection');
+const mimovrsteCampaign = require('./mimovrste-campaign');
 
 class CategoryWatcher {
   constructor() {
@@ -207,6 +208,55 @@ class CategoryWatcher {
   async fetchCategoryProducts(watch) {
     const categoryUrl = watch.category_url;
     const storeName = watch.store_name || detectStoreFromUrl(watch.store_url || categoryUrl);
+    
+    // Support Mimovrste campaign pages via GraphQL
+    if ((storeName === 'mimovrste' || categoryUrl.includes('mimovrste')) && mimovrsteCampaign.isCampaignUrl(categoryUrl)) {
+      const campaignId = mimovrsteCampaign.extractCampaignId(categoryUrl);
+      if (campaignId) {
+        const urlObj = new URL(categoryUrl);
+        const baseUrl = urlObj.origin;
+        const urlCategory = urlObj.searchParams.get('category');
+        
+        const fetchAndMap = async (cat) => {
+          const items = await mimovrsteCampaign.fetchMimovrsteCampaignItems(campaignId, cat, this.getRandomUA(), categoryUrl);
+          return mimovrsteCampaign.mapGqlItemsToProducts(items, baseUrl);
+        };
+
+        const products = [];
+        if (urlCategory) {
+          console.log(`  [Category] Mimovrste campaign "${campaignId}" - fetching category "${urlCategory}"...`);
+          const items = await fetchAndMap(urlCategory);
+          for (const p of items) { if (!products.find(x => x.url === p.url)) products.push(p); }
+        } else {
+          console.log(`  [Category] Mimovrste campaign "${campaignId}" - fetching all categories...`);
+          const defaultItems = await fetchAndMap(null);
+          for (const p of defaultItems) { if (!products.find(x => x.url === p.url)) products.push(p); }
+          
+          try {
+            const pageRes = await http.get(categoryUrl, {
+              headers: { 'User-Agent': this.getRandomUA(), 'Accept': 'text/html' },
+              timeout: 10000, validateStatus: () => true,
+            });
+            if (pageRes.status === 200) {
+              const $ = cheerio.load(pageRes.data);
+              const categories = new Set();
+              $(`a[href*="/kampanja/${campaignId}?category="]`).each((_, el) => {
+                const href = $(el).attr('href') || '';
+                const catMatch = href.match(/[?&]category=([^&]+)/);
+                if (catMatch) categories.add(catMatch[1]);
+              });
+              for (const cat of categories) {
+                const items = await fetchAndMap(cat);
+                for (const p of items) { if (!products.find(x => x.url === p.url)) products.push(p); }
+                await new Promise(r => setTimeout(r, 400));
+              }
+            }
+          } catch(e) {}
+        }
+        return products;
+      }
+    }
+
     const fromHtml = await this.scrapeCategoryHtml(categoryUrl);
     if (['shopify', 'tcgstar', 'pokedom'].includes(storeName) && categoryUrl.includes('/collections/')) {
       const fromApi = await this.fetchShopifyCollectionProducts(categoryUrl);

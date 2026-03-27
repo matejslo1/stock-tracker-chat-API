@@ -4,6 +4,7 @@ const cheerio = require('cheerio');
 const db = require('./database');
 const telegram = require('./telegram');
 const { detectStoreFromUrl } = require('./storeDetection');
+const mimovrsteCampaign = require('./mimovrste-campaign');
 
 class KeywordWatcher {
   constructor() {
@@ -366,85 +367,28 @@ class KeywordWatcher {
   async fetchMimovrsteCampaign(searchUrl, keyword) {
     const products = [];
     try {
+      const campaignId = mimovrsteCampaign.extractCampaignId(searchUrl);
+      if (!campaignId) return products;
       const urlObj = new URL(searchUrl);
       const baseUrl = urlObj.origin;
-      // Extract campaign ID from path: /kampanja/{campaignId}
-      const match = urlObj.pathname.match(/\/kampanja\/([^/?#]+)/);
-      if (!match) return products;
-      const campaignId = match[1];
-
-      // Also extract category filter if present in URL (?category=racunalnistvo)
       const urlCategory = urlObj.searchParams.get('category');
 
-      const GQL = `query($c: String!, $cat: String) {
-        getCampaign(campaignId: $c, query: { isMobile: false, previewHash: "", abTestVariant: "", bannersPage: "" }) {
-          productCollection(query: { categoryUrlKey: $cat }) {
-            itemsTotalCount
-            items { 
-              ... on Product { 
-                id 
-                title 
-                urlKey 
-                mainVariant { 
-                  price 
-                  priceRrp 
-                  availability { status } 
-                  mediaIds
-                  isAvailable
-                } 
-              } 
-            }
-          }
-        }
-      }`;
-
-      const fetchCategory = async (categoryUrlKey) => {
-        try {
-          const res = await http.post('https://www.mimovrste.com/web-gateway/graphql', {
-            query: GQL,
-            variables: { c: campaignId, cat: categoryUrlKey || null },
-          }, {
-            headers: {
-              'Content-Type': 'application/json',
-              'Origin': 'https://www.mimovrste.com',
-              'Referer': searchUrl,
-              'User-Agent': this.getRandomUA(),
-            },
-            timeout: 15000, validateStatus: () => true,
-          });
-          const items = res.data?.data?.getCampaign?.productCollection?.items || [];
-          return items
-            .filter(p => p.urlKey && p.title)
-            .filter(p => !keyword || this.isRelevant(p.title, p.urlKey, keyword))
-            .map(p => {
-              const mv = p.mainVariant || {};
-              const price = mv.price ? parseFloat(mv.price) : null;
-              const imgId = mv.mediaIds && mv.mediaIds.length > 0 ? mv.mediaIds[0] : null;
-              return {
-                name: p.title,
-                url: `${baseUrl}/proizvod/${p.urlKey}`,
-                price: price,
-                inStock: mv.availability?.status === 'A2' || mv.isAvailable === true ? true : undefined,
-                image: imgId ? `https://www.mimovrste.com/i/${imgId}/240/235` : '',
-              };
-            });
-        } catch(e) { console.error('  GQL Fetch Error:', e.message); return []; }
+      const fetchAndMap = async (cat) => {
+        const items = await mimovrsteCampaign.fetchMimovrsteCampaignItems(campaignId, cat, this.getRandomUA(), searchUrl);
+        const mapped = mimovrsteCampaign.mapGqlItemsToProducts(items, baseUrl);
+        return mapped.filter(p => !keyword || this.isRelevant(p.name, p.url, keyword));
       };
 
-      // If URL has a specific category, JUST fetch that one.
-      // Otherwise, scan all categories found on the page.
       if (urlCategory) {
         console.log(`  [5] mimovrste campaign "${campaignId}" - fetching category "${urlCategory}"...`);
-        const items = await fetchCategory(urlCategory);
+        const items = await fetchAndMap(urlCategory);
         for (const p of items) { if (!products.find(x => x.url === p.url)) products.push(p); }
       } else {
-        // First: fetch without category filter (default first page)
         console.log(`  [5] mimovrste campaign "${campaignId}" - fetching without category...`);
-        const defaultItems = await fetchCategory(null);
+        const defaultItems = await fetchAndMap(null);
         for (const p of defaultItems) { if (!products.find(x => x.url === p.url)) products.push(p); }
         console.log(`  [5] Default: ${defaultItems.length} products`);
 
-        // Then: scrape category slugs from campaign page HTML and fetch each
         try {
           const pageRes = await http.get(searchUrl, {
             headers: { 'User-Agent': this.getRandomUA(), 'Accept': 'text/html' },
@@ -460,7 +404,7 @@ class KeywordWatcher {
             });
             console.log(`  [5] Found ${categories.size} categories: ${[...categories].join(', ')}`);
             for (const cat of categories) {
-              const items = await fetchCategory(cat);
+              const items = await fetchAndMap(cat);
               let added = 0;
               for (const p of items) {
                 if (!products.find(x => x.url === p.url)) { products.push(p); added++; }
