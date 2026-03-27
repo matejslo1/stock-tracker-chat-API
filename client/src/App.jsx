@@ -272,6 +272,16 @@ const ProductCard = ({ product, onCheck, onDelete, onEdit, checking, selected, o
             <div><span className="text-gray-500">Obvestil:</span><span className="ml-2 font-semibold">{product.notification_count || 0}</span></div>
             <div><span className="text-gray-500">Dodano:</span><span className="ml-2 font-medium">{new Date(product.created_at).toLocaleDateString("sl-SI")}</span></div>
             <div><span className="text-gray-500">Zadnjič na zalogi:</span><span className="ml-2 font-medium">{product.last_in_stock ? timeAgo(product.last_in_stock) : "Nikoli"}</span></div>
+            {product.price_drop_threshold_amount && (
+              <div className="col-span-2 flex items-center gap-1.5 text-blue-600 font-semibold">
+                <TrendingDown size={14} /> Prag znižanja: -{product.price_drop_threshold_amount.toFixed(2)} EUR
+              </div>
+            )}
+            {product.price_drop_threshold_percentage && (
+              <div className="col-span-2 flex items-center gap-1.5 text-blue-600 font-semibold">
+                <TrendingDown size={14} /> Prag znižanja: -{product.price_drop_threshold_percentage}%
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -287,6 +297,8 @@ const ProductModal = ({ product, stores, onSave, onClose, appSettings }) => {
     url: product?.url || "",
     store: product?.store || "custom",
     target_price: product?.target_price || "",
+    price_drop_threshold_amount: product?.price_drop_threshold_amount || "",
+    price_drop_threshold_percentage: product?.price_drop_threshold_percentage || "",
     max_order_qty: product?.max_order_qty || 1,
     auto_purchase: product?.auto_purchase === 1,
     notify_on_stock: product?.notify_on_stock !== 0,
@@ -331,7 +343,14 @@ const ProductModal = ({ product, stores, onSave, onClose, appSettings }) => {
 
   const handleSubmit = () => {
     if (!form.name || !form.url) return;
-    onSave({ ...form, target_price: form.target_price ? parseFloat(form.target_price) : null, check_interval_minutes: parseInt(form.check_interval_minutes) || 0, max_order_qty: parseInt(form.max_order_qty) || 1 });
+    onSave({ 
+      ...form, 
+      target_price: form.target_price ? parseFloat(form.target_price) : null, 
+      price_drop_threshold_amount: form.price_drop_threshold_amount ? parseFloat(form.price_drop_threshold_amount) : 0,
+      price_drop_threshold_percentage: form.price_drop_threshold_percentage ? parseFloat(form.price_drop_threshold_percentage) : 0,
+      check_interval_minutes: parseInt(form.check_interval_minutes) || 0, 
+      max_order_qty: parseInt(form.max_order_qty) || 1 
+    });
   };
 
   const toggleFields = [
@@ -399,63 +418,47 @@ const ProductModal = ({ product, stores, onSave, onClose, appSettings }) => {
             <div>
               <label className="text-sm font-semibold text-gray-700 mb-1 block">Ciljna cena (EUR)</label>
               <input type="number" step="0.01" value={form.target_price} onChange={e => setForm(f => ({ ...f, target_price: e.target.value }))}
-                placeholder="Opcijsko..."
+                placeholder="Obvesti ko pade pod..."
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all" />
+            </div>
+          </div>
+          {/* Price thresholds */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-semibold text-gray-700 mb-1 block">Znižanje za vsaj (EUR)</label>
+              <input type="number" step="0.01" value={form.price_drop_threshold_amount} onChange={e => setForm(f => ({ ...f, price_drop_threshold_amount: e.target.value }))}
+                placeholder="npr. 5.00"
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all" />
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-gray-700 mb-1 block">Znižanje za vsaj (%)</label>
+              <input type="number" step="0.1" value={form.price_drop_threshold_percentage} onChange={e => setForm(f => ({ ...f, price_drop_threshold_percentage: e.target.value }))}
+                placeholder="npr. 10"
                 className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all" />
             </div>
           </div>
           {/* Check interval */}
-          <div>
-            <label className="text-sm font-semibold text-gray-700 mb-1 block flex items-center gap-1">
-              <Clock size={14} /> Interval preverjanja (minute)
-            </label>
-            <input type="number" min="0" step="1" value={form.check_interval_minutes}
-              onChange={e => setForm(f => ({ ...f, check_interval_minutes: e.target.value }))}
-              placeholder="0 = globalna nastavitev"
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all" />
-            <p className="text-xs text-gray-400 mt-1">0 = uporabi globalni interval iz nastavitev</p>
-          </div>
-          {/* Max order qty */}
-          <div>
-            <label className="text-sm font-semibold text-gray-700 mb-1 block flex items-center gap-1">
-              <ShoppingCart size={14} /> Max količina na naročilo
-            </label>
-            <input type="number" min="1" step="1" value={form.max_order_qty}
-              onChange={e => setForm(f => ({ ...f, max_order_qty: e.target.value }))}
-              placeholder="1"
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all" />
-            <p className="text-xs text-gray-400 mt-1">Ročno nastavi max količino za košarico (override avtomatskega zaznavanja)</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-semibold text-gray-700 mb-1 block flex items-center gap-1">
+                <Clock size={14} /> Interval (min)
+              </label>
+              <input type="number" min="0" step="1" value={form.check_interval_minutes}
+                onChange={e => setForm(f => ({ ...f, check_interval_minutes: e.target.value }))}
+                placeholder="0 = global"
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all" />
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-gray-700 mb-1 block flex items-center gap-1">
+                <ShoppingCart size={14} /> Max kol.
+              </label>
+              <input type="number" min="1" step="1" value={form.max_order_qty}
+                onChange={e => setForm(f => ({ ...f, max_order_qty: e.target.value }))}
+                placeholder="1"
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all" />
+            </div>
           </div>
           {/* Toggles */}
-          <div>
-            <label className="text-sm font-semibold text-gray-700 mb-1 block">Interval iskanja (min)</label>
-            <div className="flex items-center gap-2">
-              <input type="number" min="0" max="1440" step="1"
-                value={form.check_interval_minutes}
-                onChange={e => setForm(f => ({ ...f, check_interval_minutes: e.target.value }))}
-                className="w-28 px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all" />
-              <span className="text-xs text-gray-400">
-                {parseInt(form.check_interval_minutes) > 0
-                  ? `Vsake ${form.check_interval_minutes} min`
-                  : `Globalni interval (${globalInterval} min)`}
-              </span>
-            </div>
-            <p className="text-xs text-gray-400 mt-1">0 = uporabi globalni interval iz nastavitev</p>
-          </div>
-          <div>
-            <label className="text-sm font-semibold text-gray-700 mb-1 block">Filter cene (opcijsko)</label>
-            <div className="flex items-center gap-2">
-              <input type="number" min="0" step="0.01" placeholder="Min €"
-                value={form.min_price}
-                onChange={e => setForm(f => ({ ...f, min_price: e.target.value }))}
-                className="w-28 px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all" />
-              <span className="text-gray-400 text-sm">—</span>
-              <input type="number" min="0" step="0.01" placeholder="Max €"
-                value={form.max_price}
-                onChange={e => setForm(f => ({ ...f, max_price: e.target.value }))}
-                className="w-28 px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all" />
-            </div>
-            <p className="text-xs text-gray-400 mt-1">Ignorira izdelke izven tega cenovnega razpona</p>
-          </div>
           <div className="space-y-3 pt-2">
             {toggleFields.map(({ key, icon, label, color }) => (
               <label key={key} className="flex items-center gap-3 cursor-pointer group">
@@ -1082,6 +1085,198 @@ const SettingsTab = ({ telegramSettings, telegramForm, setTelegramForm, savingTe
   );
 };
 
+// Found Item Card (Discovered from watches)
+const FoundItemCard = ({ item, onPromote, onDelete, selected, onSelect }) => {
+  const displayStore = item.store || detectStoreFromProduct(item);
+  return (
+    <div className={cn("group relative bg-white rounded-2xl border border-gray-200 transition-all duration-300 overflow-hidden hover:shadow-lg hover:border-orange-300",
+      selected ? "ring-2 ring-orange-500 border-orange-500" : "")}
+      onClick={onSelect ? (e) => { if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'A' && e.target.tagName !== 'INPUT') onSelect(); } : undefined}>
+      
+      {/* Source badge */}
+      <div className="absolute top-3 right-3 z-10">
+        <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter", 
+          item.source_type === 'keyword' ? "bg-blue-100 text-blue-700 border border-blue-200" : "bg-purple-100 text-purple-700 border border-purple-200")}>
+          {item.source_type === 'keyword' ? 'Iskanje' : 'Kategorija'}
+        </span>
+      </div>
+
+      <div className="flex flex-col h-full">
+        {/* Image / Placeholder */}
+        <div className="h-40 bg-gray-50 flex items-center justify-center relative overflow-hidden group-hover:scale-105 transition-transform duration-500">
+          {item.image_url ? (
+            <img src={item.image_url} alt={item.name} className="w-full h-full object-contain p-2" />
+          ) : (
+            <Package size={32} className="text-gray-300" />
+          )}
+          {onSelect && (
+            <div className="absolute top-3 left-3">
+              <input type="checkbox" checked={!!selected} onChange={onSelect}
+                onClick={e => e.stopPropagation()}
+                className="w-4 h-4 rounded border-gray-300 accent-orange-600 cursor-pointer shadow-sm" />
+            </div>
+          )}
+        </div>
+
+        <div className="p-4 flex flex-col flex-1">
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
+            <StoreBrandBadge store={displayStore} />
+          </div>
+          
+          <h3 className="font-bold text-gray-900 text-sm leading-snug line-clamp-2 mb-2 flex-1">{item.name}</h3>
+          
+          <div className="flex items-center justify-between mt-auto pt-3 border-t border-gray-100">
+            <div>
+              {item.price ? (
+                <div className="text-lg font-black text-gray-900">
+                  {item.price.toFixed(2)}
+                  <span className="text-xs font-medium text-gray-500 ml-1">EUR</span>
+                </div>
+              ) : (
+                <div className="text-sm font-semibold text-gray-400 italic">Cena neznana</div>
+              )}
+              <div className="text-[10px] text-gray-400 mt-0.5">{timeAgo(item.created_at)}</div>
+            </div>
+            
+            <div className="flex items-center gap-1">
+              <a href={item.url} target="_blank" rel="noopener noreferrer" 
+                className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors" title="Odpri stran">
+                <ExternalLink size={16} />
+              </a>
+              <button onClick={() => onDelete(item.id)}
+                className="p-2 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors" title="Zavrni">
+                <Trash2 size={16} />
+              </button>
+              <button onClick={() => onPromote(item.id)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition-colors shadow-sm" title="Dodaj v sledenje">
+                <Plus size={14} /> Dodaj
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Found Items View
+const FoundItemsView = ({ items, onPromote, onDelete, onBulkPromote, onBulkDelete, selectedIds, toggleSelect, toggleSelectAll, stores }) => {
+  const [search, setSearch] = useState("");
+  const [filterStore, setFilterStore] = useState("all");
+  const [filterSource, setFilterSource] = useState("all");
+  const [sort, setSort] = useState("newest");
+
+  const filtered = items.filter(i => {
+    if (search && !i.name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (filterStore !== "all" && (i.store || detectStoreFromProduct(i)) !== filterStore) return false;
+    if (filterSource !== "all" && i.source_type !== filterSource) return false;
+    return true;
+  });
+
+  const sorted = [...filtered].sort((a, b) => {
+    if (sort === "price_asc") return (a.price || 999999) - (b.price || 999999);
+    if (sort === "price_desc") return (b.price || 0) - (a.price || 0);
+    if (sort === "name") return a.name.localeCompare(b.name);
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+
+  const allFilteredSelected = sorted.length > 0 && sorted.every(i => selectedIds.has(i.id));
+
+  return (
+    <div className="pb-12">
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div>
+          <h2 className="text-2xl font-black text-gray-900 tracking-tight">Najdeni izdelki</h2>
+          <p className="text-sm text-gray-500 mt-1">Novi izdelki, ki so jih odkrili vaši watcherji ({items.length})</p>
+        </div>
+        
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-2 animate-slideIn">
+            <button onClick={() => onBulkPromote([...selectedIds])}
+              className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-sm font-bold transition-all shadow-md">
+              <Zap size={16} /> Dodaj označene ({selectedIds.size})
+            </button>
+            <button onClick={() => onBulkDelete([...selectedIds])}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-xl text-sm font-bold transition-all">
+              <Trash2 size={16} /> Izbriši označene
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-200 p-4 mb-6 shadow-sm">
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+              <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Išči po imenu..."
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 outline-none text-sm transition-all" />
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">Sortiraj:</span>
+              <div className="flex bg-gray-100 rounded-xl p-1 w-full">
+                {[["newest","Najnovejše"],["price_asc","Cena ↑"],["price_desc","Cena ↓"],["name","Ime"]].map(([val,label]) => (
+                  <button key={val} onClick={() => setSort(val)}
+                    className={cn("flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all",
+                      sort === val ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700")}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-4 pt-4 border-t border-gray-50">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Trgovina:</span>
+              <div className="flex gap-1 overflow-x-auto">
+                <button onClick={() => setFilterStore("all")}
+                  className={cn("px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap",
+                    filterStore === "all" ? "bg-gray-900 text-white shadow-sm" : "bg-gray-100 text-gray-500 hover:bg-gray-200")}>
+                  Vse
+                </button>
+                {stores.map(s => (
+                  <button key={s.store_name} onClick={() => setFilterStore(s.store_name)}
+                    className={cn("px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap",
+                      filterStore === s.store_name ? "bg-gray-900 text-white shadow-sm" : "bg-gray-100 text-gray-500 hover:bg-gray-200")}>
+                    {s.store_name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 ml-auto">
+              <button onClick={() => toggleSelectAll(sorted)}
+                className="text-xs font-bold text-gray-500 hover:text-gray-900 border border-gray-200 px-4 py-2 rounded-xl bg-gray-50 hover:bg-white transition-all whitespace-nowrap">
+                {allFilteredSelected ? "Odizberi vse" : "Označi vse prikazane"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {sorted.length === 0 ? (
+        <div className="text-center py-24 bg-white rounded-3xl border border-gray-100 border-dashed">
+          <Search size={48} className="mx-auto mb-4 text-gray-200" />
+          <p className="text-gray-500 font-medium">Brez zadetkov</p>
+          <p className="text-sm text-gray-400 mt-1">Ni najdenih izdelkov, ki bi ustrezali vašim filtrom.</p>
+        </div>
+      ) : (
+        <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {sorted.map(item => (
+            <FoundItemCard key={item.id} item={item} 
+              onPromote={onPromote} onDelete={onDelete}
+              selected={selectedIds.has(item.id)}
+              onSelect={() => toggleSelect(item.id)} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ==================== MAIN APP ====================
 export default function StockTracker() {
   const [products, setProducts] = useState([]);
@@ -1098,7 +1293,9 @@ export default function StockTracker() {
   const [editKeyword, setEditKeyword] = useState(null);
   const [editCategory, setEditCategory] = useState(null);
   const [toast, setToast] = useState(null);
+  const [foundItems, setFoundItems] = useState([]);
   const [activeTab, setActiveTab] = useState("products");
+  const [lastFoundCount, setLastFoundCount] = useState(0);
   const [checkingId, setCheckingId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [telegramForm, setTelegramForm] = useState({ token: "", chatId: "" });
@@ -1116,30 +1313,87 @@ export default function StockTracker() {
 
   const safeJson = (r, fallback) => r.ok ? r.json().then(d => Array.isArray(fallback) ? (Array.isArray(d) ? d : fallback) : (d && typeof d === 'object' ? d : fallback)).catch(() => fallback) : Promise.resolve(fallback);
 
-  const fetchData = useCallback(async () => {
+  const fetchProducts = useCallback(async () => {
     try {
-      const [prods, sts, stat, notifs, kwWatches, catWatches, domains, settings] = await Promise.all([
-        apiFetch(`${API}/products`).then(r => safeJson(r, [])),
-        apiFetch(`${API}/stores`).then(r => safeJson(r, [])),
-        apiFetch(`${API}/status`).then(r => safeJson(r, {})).catch(() => ({})),
-        apiFetch(`${API}/notifications`).then(r => safeJson(r, [])),
-        apiFetch(`${API}/keyword-watches`).then(r => safeJson(r, [])),
-        apiFetch(`${API}/category-watches`).then(r => safeJson(r, [])).catch(() => []),
-        apiFetch(`${API}/cart/domains`).then(r => safeJson(r, [])).catch(() => []),
-        apiFetch(`${API}/app-settings`).then(r => safeJson(r, {})).catch(() => ({})),
-      ]);
+      const prods = await apiFetch(`${API}/products`).then(r => safeJson(r, []));
       setProducts(Array.isArray(prods) ? prods : []);
+    } catch (e) {
+      showToast("Napaka pri nalaganju izdelkov", "error");
+    }
+  }, []);
+
+  const fetchStores = useCallback(async () => {
+    try {
+      const sts = await apiFetch(`${API}/stores`).then(r => safeJson(r, []));
       setStores(Array.isArray(sts) ? sts : []);
+    } catch (e) {
+      showToast("Napaka pri nalaganju trgovin", "error");
+    }
+  }, []);
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const stat = await apiFetch(`${API}/status`).then(r => safeJson(r, {})).catch(() => ({}));
       setStatus(stat && typeof stat === 'object' ? stat : {});
+    } catch (e) {
+      showToast("Napaka pri nalaganju statusa", "error");
+    }
+  }, []);
+
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const notifs = await apiFetch(`${API}/notifications`).then(r => safeJson(r, []));
       setNotifications(Array.isArray(notifs) ? notifs : []);
+    } catch (e) {
+      showToast("Napaka pri nalaganju obvestil", "error");
+    }
+  }, []);
+
+  const fetchKeywordWatches = useCallback(async () => {
+    try {
+      const kwWatches = await apiFetch(`${API}/keyword-watches`).then(r => safeJson(r, []));
       setKeywordWatches(Array.isArray(kwWatches) ? kwWatches : []);
+    } catch (e) {
+      showToast("Napaka pri nalaganju iskanj", "error");
+    }
+  }, []);
+
+  const fetchCategoryWatches = useCallback(async () => {
+    try {
+      const catWatches = await apiFetch(`${API}/category-watches`).then(r => safeJson(r, [])).catch(() => []);
       setCategoryWatches(Array.isArray(catWatches) ? catWatches : []);
+    } catch (e) {
+      showToast("Napaka pri nalaganju kategorij", "error");
+    }
+  }, []);
+
+  const fetchShopifyDomains = useCallback(async () => {
+    try {
+      const domains = await apiFetch(`${API}/cart/domains`).then(r => safeJson(r, [])).catch(() => []);
       setShopifyDomains(Array.isArray(domains) ? domains : []);
+    } catch (e) {
+      showToast("Napaka pri nalaganju Shopify domen", "error");
+    }
+  }, []);
+
+  const fetchAppSettings = useCallback(async () => {
+    try {
+      const settings = await apiFetch(`${API}/app-settings`).then(r => safeJson(r, {})).catch(() => ({}));
       if (settings && settings.check_interval_minutes) setAppSettings(settings);
     } catch (e) {
-      showToast("Napaka pri povezavi s strežnikom", "error");
+      showToast("Napaka pri nalaganju nastavitev aplikacije", "error");
     }
-    setLoading(false);
+  }, []);
+
+  const fetchFoundItems = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/found-items");
+      const data = await res.json();
+      setFoundItems(data);
+      setLastFoundCount(data.length);
+    } catch (e) {
+      console.error("fetchFoundItems error:", e);
+    }
   }, []);
 
   const fetchTelegramSettings = useCallback(async () => {
@@ -1151,11 +1405,25 @@ export default function StockTracker() {
   }, []);
 
   useEffect(() => {
-    fetchData();
+    fetchProducts();
+    fetchStores();
+    fetchStatus();
+    fetchNotifications();
+    fetchKeywordWatches();
+    fetchCategoryWatches();
+    fetchShopifyDomains();
+    fetchAppSettings();
+    fetchFoundItems();
     fetchTelegramSettings();
-    const interval = setInterval(fetchData, 10000);
+    setLoading(false);
+
+    const interval = setInterval(() => {
+      fetchStatus();
+      fetchNotifications();
+      fetchFoundItems(); // Also fetch found items periodically
+    }, 10000);
     return () => clearInterval(interval);
-  }, [fetchData, fetchTelegramSettings]);
+  }, [fetchProducts, fetchStores, fetchStatus, fetchNotifications, fetchKeywordWatches, fetchCategoryWatches, fetchShopifyDomains, fetchAppSettings, fetchFoundItems, fetchTelegramSettings]);
 
   // Auto-build cart URLs for all domains that have in-stock items
   useEffect(() => {
@@ -1172,11 +1440,11 @@ export default function StockTracker() {
       if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
       showToast("Izdelek dodan za sledenje!", "success");
       setShowModal(false);
-      fetchData();
+      fetchProducts();
       // Poll aggressively for the first 15 seconds to catch the initial stock check result
-      setTimeout(fetchData, 3000);
-      setTimeout(fetchData, 7000);
-      setTimeout(fetchData, 15000);
+      setTimeout(fetchProducts, 3000);
+      setTimeout(fetchProducts, 7000);
+      setTimeout(fetchProducts, 15000);
     } catch (e) { showToast(e.message, "error"); }
   };
 
@@ -1185,7 +1453,7 @@ export default function StockTracker() {
       await apiFetch(`${API}/products/${editProduct.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
       showToast("Izdelek posodobljen!", "success");
       setEditProduct(null);
-      fetchData();
+      fetchProducts();
     } catch (e) { showToast("Napaka pri posodabljanju", "error"); }
   };
 
@@ -1193,7 +1461,7 @@ export default function StockTracker() {
     if (!confirm("Ali res želiš odstraniti ta izdelek?")) return;
     await apiFetch(`${API}/products/${id}`, { method: "DELETE" });
     showToast("Izdelek odstranjen", "info");
-    fetchData();
+    fetchProducts();
   };
 
   const handleCheck = async (id) => {
@@ -1202,7 +1470,7 @@ export default function StockTracker() {
       const res = await apiFetch(`${API}/check/${id}`, { method: "POST" });
       if (!res.ok) { showToast(`Strežnik ni dosegljiv (${res.status})`, "error"); setCheckingId(null); return; }
       showToast("Preverjanje zaloge...", "info");
-      setTimeout(() => { fetchData(); setCheckingId(null); }, 5000);
+      setTimeout(() => { fetchProducts(); setCheckingId(null); }, 5000);
     } catch(e) { showToast("Napaka pri preverjanju", "error"); setCheckingId(null); }
   };
 
@@ -1220,17 +1488,17 @@ export default function StockTracker() {
         const data = await res.json().catch(() => ({}));
         if (!data.isChecking) {
           clearInterval(poll);
-          await fetchData();
+          await fetchProducts();
           setCheckingId(null);
           showToast("Preverjanje končano!", "success");
         }
       } catch(e) {
         clearInterval(poll);
-        await fetchData();
+        await fetchProducts();
         setCheckingId(null);
       }
     }, 2000);
-    setTimeout(() => { clearInterval(poll); fetchData(); setCheckingId(null); }, 120000);
+    setTimeout(() => { clearInterval(poll); fetchProducts(); setCheckingId(null); }, 120000);
   };
 
   const handleCheckFiltered = async (filteredProducts) => {
@@ -1270,17 +1538,17 @@ export default function StockTracker() {
         const data = await res.json().catch(() => ({}));
         if (!data.isChecking) {
           clearInterval(poll);
-          await fetchData();
+          await fetchProducts();
           setCheckingId(null);
           showToast("Preverjanje prikazanih izdelkov končano!", "success");
         }
       } catch (e) {
         clearInterval(poll);
-        await fetchData();
+        await fetchProducts();
         setCheckingId(null);
       }
     }, 2000);
-    setTimeout(() => { clearInterval(poll); fetchData(); setCheckingId(null); }, 120000);
+    setTimeout(() => { clearInterval(poll); fetchProducts(); setCheckingId(null); }, 120000);
   };
 
   const handleTestTelegram = async () => {
@@ -1301,7 +1569,7 @@ export default function StockTracker() {
       if (!res.ok) throw new Error(data.error);
       showToast(data.connected ? "Telegram nastavitve shranjene!" : "Token shranjen, a bot ni uspel vzpostaviti povezave.", data.connected ? "success" : "warning");
       fetchTelegramSettings();
-      fetchData();
+      fetchProducts();
     } catch(e) { showToast(e.message, "error"); }
     setSavingTelegram(false);
   };
@@ -1313,11 +1581,11 @@ export default function StockTracker() {
       if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
       showToast("Iskanje dodano! Prvo preverjanje teče ...", "success");
       setShowKeywordModal(false);
-      fetchData();
+      fetchKeywordWatches();
       // Poll aggressively to catch the initial search result
-      setTimeout(fetchData, 3000);
-      setTimeout(fetchData, 8000);
-      setTimeout(fetchData, 15000);
+      setTimeout(fetchKeywordWatches, 3000);
+      setTimeout(fetchKeywordWatches, 8000);
+      setTimeout(fetchKeywordWatches, 15000);
     } catch (e) { showToast(e.message, "error"); }
   };
 
@@ -1326,7 +1594,7 @@ export default function StockTracker() {
       await apiFetch(`${API}/keyword-watches/${editKeyword.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
       showToast("Iskanje posodobljeno!", "success");
       setEditKeyword(null);
-      fetchData();
+      fetchKeywordWatches();
     } catch(e) { showToast("Napaka pri posodabljanju", "error"); }
   };
 
@@ -1334,7 +1602,7 @@ export default function StockTracker() {
     if (!confirm("Odstrani to iskanje?")) return;
     await apiFetch(`${API}/keyword-watches/${id}`, { method: "DELETE" });
     showToast("Iskanje odstranjeno", "info");
-    fetchData();
+    fetchKeywordWatches();
   };
 
   const handleAddCategoryWatch = async (data) => {
@@ -1343,10 +1611,10 @@ export default function StockTracker() {
       if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
       showToast("Kategorija dodana! Prvo preverjanje teče ...", "success");
       setShowCategoryModal(false);
-      fetchData();
-      setTimeout(fetchData, 3000);
-      setTimeout(fetchData, 8000);
-      setTimeout(fetchData, 15000);
+      fetchCategoryWatches();
+      setTimeout(fetchCategoryWatches, 3000);
+      setTimeout(fetchCategoryWatches, 8000);
+      setTimeout(fetchCategoryWatches, 15000);
     } catch (e) { showToast(e.message, "error"); }
   };
 
@@ -1355,7 +1623,7 @@ export default function StockTracker() {
       await apiFetch(`${API}/category-watches/${editCategory.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
       showToast("Kategorija posodobljena!", "success");
       setEditCategory(null);
-      fetchData();
+      fetchCategoryWatches();
     } catch (e) { showToast("Napaka pri posodabljanju kategorije", "error"); }
   };
 
@@ -1363,7 +1631,7 @@ export default function StockTracker() {
     if (!confirm("Odstrani to kategorijo?")) return;
     await apiFetch(`${API}/category-watches/${id}`, { method: "DELETE" });
     showToast("Kategorija odstranjena", "info");
-    fetchData();
+    fetchCategoryWatches();
   };
 
   // Bulk delete handler
@@ -1377,8 +1645,68 @@ export default function StockTracker() {
       });
       setSelectedIds(new Set());
       showToast(`${selectedIds.size} izdelkov odstranjenih`, "success");
-      fetchData();
+      fetchProducts();
     } catch(e) { showToast("Napaka pri brisanju", "error"); }
+  };
+
+  // Found Items handlers
+  const handlePromoteFoundItem = async (id) => {
+    try {
+      const res = await apiFetch(`/api/found-items/${id}/promote`, { method: "POST" });
+      if (!res.ok) {
+        const e = await res.json();
+        throw new Error(e.error);
+      }
+      showToast("Izdelek dodan v sledenje!", "success");
+      fetchFoundItems();
+      fetchProducts();
+    } catch (e) {
+      showToast(e.message, "error");
+    }
+  };
+
+  const handleDeleteFoundItem = async (id) => {
+    try {
+      await apiFetch(`/api/found-items/${id}`, { method: "DELETE" });
+      fetchFoundItems();
+    } catch (e) {
+      showToast("Napaka pri brisanju", "error");
+    }
+  };
+
+  const handleBulkPromoteFoundItems = async (ids) => {
+    if (!ids || ids.length === 0) return;
+    try {
+      const res = await apiFetch("/api/found-items/bulk-promote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await res.json();
+      showToast(`Dodanih ${data.promoted} izdelkov.`, "success");
+      setSelectedIds(new Set());
+      fetchFoundItems();
+      fetchProducts();
+    } catch (e) {
+      showToast("Napaka pri dodajanju", "error");
+    }
+  };
+
+  const handleBulkDeleteFoundItems = async (ids) => {
+    if (!ids || ids.length === 0) return;
+    if (!confirm(`Ali res želiš odstraniti ${ids.length} označene rezultate?`)) return;
+    try {
+      await apiFetch("/api/found-items/bulk-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      setSelectedIds(new Set());
+      showToast("Rezultati odstranjeni", "info");
+      fetchFoundItems();
+    } catch (e) {
+      showToast("Napaka pri brisanju", "error");
+    }
   };
 
   const toggleSelect = (id) => {
@@ -1549,14 +1877,21 @@ export default function StockTracker() {
         <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit mb-6 overflow-x-auto">
           {[
             { id: "products", label: "Izdelki", icon: <Package size={14} /> },
-            { id: "keywords", label: "Iskanja", icon: <Search size={14} /> },
+            { id: "keywords", label: "Watchers", icon: <Activity size={14} /> },
+            { id: "discovered_keywords", label: "Rezultati iskanj", icon: <Search size={14} />, count: foundItems.filter(i => i.source_type === 'keyword').length },
+            { id: "discovered_categories", label: "Rezultati kategorij", icon: <TrendingDown size={14} />, count: foundItems.filter(i => i.source_type === 'category').length },
             { id: "notifications", label: "Obvestila", icon: <Bell size={14} /> },
             { id: "settings", label: "Nastavitve", icon: <Settings size={14} /> },
           ].map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+            <button key={tab.id} onClick={() => { setActiveTab(tab.id); setSelectedIds(new Set()); }}
               className={cn("flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap",
                 activeTab === tab.id ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700")}>
               {tab.icon} {tab.label}
+              {tab.count > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-red-500 text-white rounded-full">
+                  {tab.count}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -1963,18 +2298,10 @@ export default function StockTracker() {
 
         {/* Settings Tab */}
         {activeTab === "settings" && (
-          <SettingsTab
-            telegramSettings={telegramSettings}
-            telegramForm={telegramForm}
-            setTelegramForm={setTelegramForm}
-            savingTelegram={savingTelegram}
-            handleSaveTelegram={handleSaveTelegram}
-            handleTestTelegram={handleTestTelegram}
-            status={status}
-            stores={stores}
-            onStoresUpdate={fetchData}
-            showToast={showToast}
-            appSettings={appSettings}
+          <SettingsTab telegramSettings={telegramSettings} telegramForm={telegramForm} setTelegramForm={setTelegramForm}
+            savingTelegram={savingTelegram} handleSaveTelegram={handleSaveTelegram} handleTestTelegram={handleTestTelegram}
+            status={status} stores={stores} fetchStores={fetchStores} onStoresUpdate={fetchStores} showToast={showToast}
+            appSettings={appSettings} 
             onSettingsChange={async newSettings => {
               setAppSettings(prev => ({ ...prev, ...newSettings }));
               try {
@@ -1982,6 +2309,15 @@ export default function StockTracker() {
               } catch(e) { console.error('Failed to save settings:', e); }
             }}
           />
+        )}
+
+        {/* Found Items Tabs */}
+        {(activeTab === "discovered_keywords" || activeTab === "discovered_categories") && (
+          <FoundItemsView 
+            items={foundItems.filter(i => activeTab === "discovered_keywords" ? i.source_type === "keyword" : i.source_type === "category")} 
+            onPromote={handlePromoteFoundItem} onDelete={handleDeleteFoundItem}
+            onBulkPromote={handleBulkPromoteFoundItems} onBulkDelete={handleBulkDeleteFoundItems}
+            selectedIds={selectedIds} toggleSelect={toggleSelect} toggleSelectAll={toggleSelectAll} stores={stores} />
         )}
       </div>
 

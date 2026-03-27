@@ -278,24 +278,34 @@ class CategoryWatcher {
   }
 
   async autoAddProducts(watch, newProducts) {
-    if (!watch.auto_add_tracking || newProducts.length === 0) return;
+    if (newProducts.length === 0) return;
     const checker = require('./checker');
     const toCheck = [];
     for (const product of newProducts) {
       try {
-        const existing = db.prepare('SELECT id FROM products WHERE url = ?').get(product.url);
-        if (existing) continue;
-        let globalCheckInterval = 0;
-        try {
-          const row = db.prepare("SELECT value FROM app_settings WHERE key = 'check_interval_minutes'").get();
-          globalCheckInterval = parseInt(row?.value || '0', 10) || 0;
-        } catch (e) {}
+        const inProducts = db.prepare('SELECT id FROM products WHERE url = ?').get(product.url);
+        if (inProducts) continue;
+
         const storeName = watch.store_name || detectStoreFromUrl(product.url);
-        const ins = db.prepare(`INSERT INTO products (name, url, store, current_price, notify_on_stock, notify_on_price_drop, check_interval_minutes) VALUES (?, ?, ?, ?, 1, 1, ?)`)
-          .run(product.name, product.url, storeName, product.price, globalCheckInterval);
-        const inserted = db.prepare('SELECT * FROM products WHERE id = ?').get(ins.lastInsertRowid);
-        if (inserted) toCheck.push(inserted);
-      } catch (e) {}
+
+        if (watch.auto_add_tracking) {
+          let globalCheckInterval = 0;
+          try {
+            const row = db.prepare("SELECT value FROM app_settings WHERE key = 'check_interval_minutes'").get();
+            globalCheckInterval = parseInt(row?.value || '0', 10) || 0;
+          } catch (e) {}
+          const ins = db.prepare(`INSERT INTO products (name, url, store, current_price, notify_on_stock, notify_on_price_drop, check_interval_minutes, image_url) VALUES (?, ?, ?, ?, 1, 1, ?, ?)`)
+            .run(product.name, product.url, storeName, product.price, globalCheckInterval, product.image);
+          const inserted = db.prepare('SELECT * FROM products WHERE id = ?').get(ins.lastInsertRowid);
+          if (inserted) toCheck.push(inserted);
+          console.log(`    ➕ Auto-added: ${product.name}`);
+        } else {
+          // Add to discovered items for manual review
+          db.prepare(`INSERT OR IGNORE INTO found_items (name, url, price, store, image_url, source_type, source_id) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+            .run(product.name, product.url, product.price, storeName, product.image, 'category', watch.id);
+          console.log(`    🔍 Discovered: ${product.name}`);
+        }
+      } catch (e) { console.error('Error adding new product from category:', e.message); }
     }
 
     for (const product of toCheck) {
@@ -328,8 +338,10 @@ class CategoryWatcher {
     });
     const newProducts = filteredProducts.filter(product => !knownUrls.includes(product.url));
 
-    if (newProducts.length > 0 && watch.notify_new_products) {
-      await telegram.sendCategoryAlert(watch, newProducts);
+    if (newProducts.length > 0 && (watch.notify_new_products || !watch.auto_add_tracking)) {
+      if (watch.notify_new_products) {
+        await telegram.sendCategoryAlert(watch, newProducts);
+      }
       await this.autoAddProducts(watch, newProducts);
       db.prepare('INSERT INTO notifications (product_id, type, message) VALUES (?, ?, ?)')
         .run(null, 'category_watch', `Found ${newProducts.length} new in category "${watch.category_name || watch.category_url}"`);

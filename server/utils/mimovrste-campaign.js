@@ -4,9 +4,9 @@ const http = require('./http');
  * Shared logic for scraping Mimovrste campaign pages using GraphQL.
  */
 
-const GQL = `query($c: String!, $cat: String) {
+const GQL = `query getCampaignForList($c: String!, $cat: String, $pagination: ProductCollectionPaginationInput) {
   getCampaign(campaignId: $c, query: { isMobile: false, previewHash: "", abTestVariant: "", bannersPage: "" }) {
-    productCollection(query: { categoryUrlKey: $cat }) {
+    productCollection(query: { categoryUrlKey: $cat, pagination: $pagination }) {
       itemsTotalCount
       items { 
         ... on Product { 
@@ -27,27 +27,55 @@ const GQL = `query($c: String!, $cat: String) {
 }`;
 
 /**
- * Fetch campaign items via GraphQL
+ * Fetch campaign items via GraphQL with pagination support
  */
 async function fetchMimovrsteCampaignItems(campaignId, categoryUrlKey, userAgent, referer) {
+  let allItems = [];
+  let offset = 0;
+  const limit = 40; // Mimovrste usually uses 24, but 40 works too
+  let totalCount = 0;
+
   try {
-    const res = await http.post('https://www.mimovrste.com/web-gateway/graphql', {
-      query: GQL,
-      variables: { c: campaignId, cat: categoryUrlKey || null },
-    }, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Origin': 'https://www.mimovrste.com',
-        'Referer': referer,
-        'User-Agent': userAgent,
-      },
-      timeout: 15000, validateStatus: () => true,
-    });
-    
-    return res.data?.data?.getCampaign?.productCollection?.items || [];
+    do {
+      console.log(`  Mimovrste GQL: Fetching ${campaignId} (offset: ${offset})...`);
+      const res = await http.post('https://www.mimovrste.com/web-gateway/graphql', {
+        query: GQL,
+        variables: { 
+          c: campaignId, 
+          cat: categoryUrlKey || null,
+          pagination: { limit, offset }
+        },
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Origin': 'https://www.mimovrste.com',
+          'Referer': referer,
+          'User-Agent': userAgent,
+        },
+        timeout: 15000, validateStatus: () => true,
+      });
+
+      const collection = res.data?.data?.getCampaign?.productCollection;
+      const items = collection?.items || [];
+      totalCount = collection?.itemsTotalCount || 0;
+      
+      if (items.length === 0) break;
+      
+      allItems = allItems.concat(items);
+      offset += items.length;
+
+      // Safety break: don't fetch more than 1000 items to avoid timeouts/bans
+      if (offset >= 1000 || allItems.length >= totalCount) break;
+
+      // Small delay between pages
+      if (offset < totalCount) await new Promise(r => setTimeout(r, 400));
+
+    } while (offset < totalCount);
+
+    return allItems;
   } catch(e) {
     console.error('  Mimovrste GQL Fetch Error:', e.message);
-    return [];
+    return allItems; // Return what we got so far
   }
 }
 

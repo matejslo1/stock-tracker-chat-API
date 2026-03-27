@@ -623,37 +623,44 @@ class KeywordWatcher {
     if (newProducts.length > 0 && watch.notify_new_products) {
       await telegram.sendKeywordAlert(watch, newProducts);
 
-      // Auto-add to tracking
-      if (watch.auto_add_tracking) {
-        const checker = require('./checker');
-        const toCheck = [];
-        for (const product of newProducts) {
-          try {
-            const existing = db.prepare('SELECT id FROM products WHERE url = ?').get(product.url);
-            if (!existing) {
-              const validStores = ['shopify', 'amazon', 'bigbang', 'mimovrste', 'pikazard', 'tcgstar', 'pokedom', 'custom'];
-              const productStore = validStores.includes(watch.store_name)
-                ? watch.store_name
-                : detectStoreFromUrl(product.url);
-              let globalCheckInterval = 0;
-              try {
-                const row = db.prepare("SELECT value FROM app_settings WHERE key = 'check_interval_minutes'").get();
-                globalCheckInterval = parseInt(row?.value || '0') || 0;
-              } catch(e) {}
-              const ins = db.prepare(`INSERT INTO products (name, url, store, current_price, notify_on_stock, notify_on_price_drop, check_interval_minutes) VALUES (?, ?, ?, ?, 1, 1, ?)`)
-                .run(product.name, product.url, productStore, product.price, globalCheckInterval);
-              console.log(`    ➕ Auto-added: ${product.name}`);
-              const newP = db.prepare('SELECT * FROM products WHERE id = ?').get(ins.lastInsertRowid);
-              if (newP) toCheck.push(newP);
-            }
-          } catch(e) {}
-        }
-        if (toCheck.length > 0) {
-          console.log(`  ⚡ Checking ${toCheck.length} newly added products...`);
-          for (const p of toCheck) {
-            try { await checker.checkProduct(p); console.log(`  ✅ Checked: ${p.name}`); }
-            catch(e) { console.error(`  ❌ ${p.name}: ${e.message}`); }
+      // Add to tracking OR to found_items
+      const checker = require('./checker');
+      const toCheck = [];
+      for (const product of newProducts) {
+        try {
+          const inProducts = db.prepare('SELECT id FROM products WHERE url = ?').get(product.url);
+          if (inProducts) continue;
+
+          const validStores = ['shopify', 'amazon', 'bigbang', 'mimovrste', 'pikazard', 'tcgstar', 'pokedom', 'custom'];
+          const productStore = validStores.includes(watch.store_name)
+            ? watch.store_name
+            : detectStoreFromUrl(product.url);
+
+          if (watch.auto_add_tracking) {
+            // Auto-add to main tracking
+            let globalCheckInterval = 0;
+            try {
+              const row = db.prepare("SELECT value FROM app_settings WHERE key = 'check_interval_minutes'").get();
+              globalCheckInterval = parseInt(row?.value || '0') || 0;
+            } catch(e) {}
+            const ins = db.prepare(`INSERT INTO products (name, url, store, current_price, notify_on_stock, notify_on_price_drop, check_interval_minutes, image_url) VALUES (?, ?, ?, ?, 1, 1, ?, ?)`)
+              .run(product.name, product.url, productStore, product.price, globalCheckInterval, product.image);
+            console.log(`    ➕ Auto-added: ${product.name}`);
+            const newP = db.prepare('SELECT * FROM products WHERE id = ?').get(ins.lastInsertRowid);
+            if (newP) toCheck.push(newP);
+          } else {
+            // Add to discovered items for manual review
+            db.prepare(`INSERT OR IGNORE INTO found_items (name, url, price, store, image_url, source_type, source_id) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+              .run(product.name, product.url, product.price, productStore, product.image, 'keyword', watch.id);
+            console.log(`    🔍 Discovered: ${product.name}`);
           }
+        } catch(e) { console.error('Error adding new product:', e.message); }
+      }
+      if (toCheck.length > 0) {
+        console.log(`  ⚡ Checking ${toCheck.length} newly added products...`);
+        for (const p of toCheck) {
+          try { await checker.checkProduct(p); console.log(`  ✅ Checked: ${p.name}`); }
+          catch(e) { console.error(`  ❌ ${p.name}: ${e.message}`); }
         }
       }
       db.prepare('INSERT INTO notifications (product_id, type, message) VALUES (?, ?, ?)')

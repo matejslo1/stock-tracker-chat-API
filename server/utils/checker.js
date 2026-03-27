@@ -326,26 +326,42 @@ class StockChecker {
       }
     }
 
-    // Price dropped
+    // Price drop detection
     const priceDiff = oldPrice ? Math.round((oldPrice - newPrice) * 100) / 100 : 0;
-    if (newPrice && oldPrice && priceDiff >= 0.05 && product.notify_on_price_drop) {
-      console.log(`  💰 Price drop for ${product.name}: ${oldPrice} → ${newPrice}`);
-      await telegram.sendPriceDropAlert(product, oldPrice, newPrice);
+    const dropPercentage = oldPrice ? (priceDiff / oldPrice) * 100 : 0;
 
-      db.prepare('INSERT INTO notifications (product_id, type, message) VALUES (?, ?, ?)')
-        .run(product.id, 'price_drop', `Price dropped from ${oldPrice} to ${newPrice}`);
+    let shouldNotifyPrice = false;
+    let priceReason = "";
+
+    // 1. Target price reached
+    if (newPrice && product.target_price && newPrice <= product.target_price && isNowInStock) {
+      shouldNotifyPrice = true;
+      priceReason = `🎯 Ciljna cena dosežena! (${newPrice} ${product.currency})`;
+    } 
+    // 2. Threshold-based price drop
+    else if (newPrice && oldPrice && newPrice < oldPrice && product.notify_on_price_drop) {
+      const thresholdAmt = product.price_drop_threshold_amount || 0;
+      const thresholdPct = product.price_drop_threshold_percentage || 0;
+
+      if (thresholdAmt > 0 && priceDiff >= thresholdAmt) {
+        shouldNotifyPrice = true;
+        priceReason = `💰 Cena se je znižala za ${priceDiff.toFixed(2)} ${product.currency}`;
+      } else if (thresholdPct > 0 && dropPercentage >= thresholdPct) {
+        shouldNotifyPrice = true;
+        priceReason = `📉 Cena se je znižala za ${dropPercentage.toFixed(1)}%`;
+      } else if (thresholdAmt === 0 && thresholdPct === 0 && priceDiff >= 0.05) {
+        // Default sensitivity if no thresholds are set
+        shouldNotifyPrice = true;
+        priceReason = `✨ Cena se je znižala z ${oldPrice} na ${newPrice} ${product.currency}`;
+      }
     }
 
-    // Target price reached
-    if (newPrice && product.target_price && newPrice <= product.target_price && isNowInStock) {
-      console.log(`  🎯 Target price reached for ${product.name}!`);
-      await telegram.sendMessage(
-        `🎯 *CILJNA CENA DOSEŽENA!*\n\n` +
-        `📦 *${product.name}*\n` +
-        `💰 Trenutna cena: ${newPrice} ${product.currency}\n` +
-        `🎯 Ciljna cena: ${product.target_price} ${product.currency}\n` +
-        `\n🔗 [Kupi zdaj!](${product.url})`
-      );
+    if (shouldNotifyPrice) {
+      console.log(`  💰 Price alert for ${product.name}: ${priceReason}`);
+      await telegram.sendPriceDropAlert(product, oldPrice, newPrice);
+      
+      db.prepare('INSERT INTO notifications (product_id, type, message) VALUES (?, ?, ?)')
+        .run(product.id, 'price_drop', priceReason);
     }
 
     const stockStatus = isNowInStock ? '✅ In stock' : '❌ Out of stock';

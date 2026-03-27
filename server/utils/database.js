@@ -80,6 +80,8 @@ async function initDatabase() {
       auto_purchase INTEGER DEFAULT 0,
       notify_on_stock INTEGER DEFAULT 1,
       notify_on_price_drop INTEGER DEFAULT 0,
+      price_drop_threshold_amount REAL DEFAULT 0,
+      price_drop_threshold_percentage REAL DEFAULT 0,
       image_url TEXT,
       selector_config TEXT,
       check_interval_minutes INTEGER DEFAULT 0,
@@ -98,13 +100,10 @@ async function initDatabase() {
   } catch(e) { /* column already exists */ }
 
   // Add shopify_variant_id column if it doesn't exist (migration)
-  try {
-    db.run('ALTER TABLE products ADD COLUMN shopify_variant_id TEXT');
-  } catch(e) { /* column already exists */ }
-
-  try {
-    db.run('ALTER TABLE products ADD COLUMN max_order_qty INTEGER DEFAULT 1');
-  } catch(e) { /* column already exists */ }
+  try { db.run('ALTER TABLE products ADD COLUMN shopify_variant_id TEXT'); } catch(e) {}
+  try { db.run('ALTER TABLE products ADD COLUMN max_order_qty INTEGER DEFAULT 1'); } catch(e) {}
+  try { db.run('ALTER TABLE products ADD COLUMN price_drop_threshold_amount REAL DEFAULT 0'); } catch(e) {}
+  try { db.run('ALTER TABLE products ADD COLUMN price_drop_threshold_percentage REAL DEFAULT 0'); } catch(e) {}
 
   db.run(`
     CREATE TABLE IF NOT EXISTS app_settings (
@@ -395,6 +394,26 @@ async function initDatabase() {
     }
   });
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS found_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      url TEXT NOT NULL UNIQUE,
+      price REAL,
+      store TEXT NOT NULL,
+      image_url TEXT,
+      source_type TEXT, -- 'keyword' or 'category'
+      source_id INTEGER,
+      status TEXT DEFAULT 'new',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Migration: add source_type, source_id if not exists
+  try { db.run("ALTER TABLE found_items ADD COLUMN source_type TEXT"); } catch(e) {}
+  try { db.run("ALTER TABLE found_items ADD COLUMN source_id INTEGER"); } catch(e) {}
+
   // Helpful indexes (speed up filtering & history lookups)
   // NOTE: create indexes AFTER ALL tables exist. Otherwise a fresh DB will crash.
   db.run(`
@@ -411,6 +430,9 @@ async function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_keyword_watches_last_checked ON keyword_watches(last_checked);
     CREATE INDEX IF NOT EXISTS idx_category_watches_store ON category_watches(store_name);
     CREATE INDEX IF NOT EXISTS idx_category_watches_last_checked ON category_watches(last_checked);
+
+    CREATE INDEX IF NOT EXISTS idx_found_items_status ON found_items(status);
+    CREATE INDEX IF NOT EXISTS idx_found_items_url ON found_items(url);
   `);
 
   saveToFile();

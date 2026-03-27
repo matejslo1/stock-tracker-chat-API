@@ -97,7 +97,7 @@ app.get("/api/products", (req, res) => {
 
 app.post("/api/products", async (req, res) => {
   try {
-    const { name, store, target_price, auto_purchase, notify_on_stock, notify_on_price_drop, check_interval_minutes, max_order_qty } = req.body;
+    const { name, store, target_price, auto_purchase, notify_on_stock, notify_on_price_drop, price_drop_threshold_amount, price_drop_threshold_percentage, check_interval_minutes, max_order_qty } = req.body;
     let { url } = req.body;
     if (!name || !url) return res.status(400).json({ error: "name and url required" });
     // Strip Shopify tracking params from URL before saving
@@ -110,11 +110,14 @@ app.post("/api/products", async (req, res) => {
     } catch(e) {}
     const resolvedStore = resolvePreferredStore(url, store);
     const result = db.prepare(
-      `INSERT INTO products (name, url, store, target_price, auto_purchase, notify_on_stock, notify_on_price_drop, check_interval_minutes, max_order_qty)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO products (name, url, store, target_price, auto_purchase, notify_on_stock, notify_on_price_drop, price_drop_threshold_amount, price_drop_threshold_percentage, check_interval_minutes, max_order_qty)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(name, url, resolvedStore, target_price || null,
       auto_purchase ? 1 : 0, notify_on_stock !== false ? 1 : 0,
-      notify_on_price_drop ? 1 : 0, check_interval_minutes || 0,
+      notify_on_price_drop ? 1 : 0,
+      price_drop_threshold_amount || 0,
+      price_drop_threshold_percentage || 0,
+      check_interval_minutes || 0,
       max_order_qty || 1);
     const product = db.prepare("SELECT * FROM products WHERE id = ?").get(result.lastInsertRowid);
     // Kick off an immediate check in the background using dedicated single-product checker
@@ -139,13 +142,16 @@ app.post("/api/products/bulk-delete", (req, res) => {
 
 app.put("/api/products/:id", (req, res) => {
   try {
-    const { name, url, store, target_price, auto_purchase, notify_on_stock, notify_on_price_drop, check_interval_minutes, max_order_qty } = req.body;
+    const { name, url, store, target_price, auto_purchase, notify_on_stock, notify_on_price_drop, price_drop_threshold_amount, price_drop_threshold_percentage, check_interval_minutes, max_order_qty } = req.body;
     const resolvedStore = resolvePreferredStore(url, store);
     db.prepare(
-      `UPDATE products SET name=?, url=?, store=?, target_price=?, auto_purchase=?, notify_on_stock=?, notify_on_price_drop=?, check_interval_minutes=?, max_order_qty=?, updated_at=datetime('now') WHERE id=?`
+      `UPDATE products SET name=?, url=?, store=?, target_price=?, auto_purchase=?, notify_on_stock=?, notify_on_price_drop=?, price_drop_threshold_amount=?, price_drop_threshold_percentage=?, check_interval_minutes=?, max_order_qty=?, updated_at=datetime('now') WHERE id=?`
     ).run(name, url, resolvedStore, target_price || null,
       auto_purchase ? 1 : 0, notify_on_stock ? 1 : 0,
-      notify_on_price_drop ? 1 : 0, check_interval_minutes || 0,
+      notify_on_price_drop ? 1 : 0,
+      price_drop_threshold_amount || 0,
+      price_drop_threshold_percentage || 0,
+      check_interval_minutes || 0,
       max_order_qty || 1,
       req.params.id);
     res.json({ ok: true });
@@ -586,6 +592,106 @@ app.post("/api/category-watches/:id/reset", (req, res) => {
   try {
     db.prepare("UPDATE category_watches SET known_product_urls='[]' WHERE id=?").run(req.params.id);
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Found Items (Discovered from watches)
+app.get("/api/found-items", (req, res) => {
+  try {
+    const items = db.prepare("SELECT * FROM found_items WHERE status = 'new' ORDER BY created_at DESC").all();
+    res.json(items);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/found-items/:id/promote", async (req, res) => {
+  try {
+    const item = db.prepare("SELECT * FROM found_items WHERE id = ?").get(req.params.id);
+    if (!item) return res.status(404).json({ error: "Item not found" });
+
+    // Try to detect store if not set or generic
+    const store = item.store === 'custom' ? detectStoreFromUrl(item.url) : item.store;
+
+    // Get global interval
+    let globalInterval = 5;
+    try {
+      const row = db.prepare("SELECT value FROM app_settings WHERE key = 'check_interval_minutes'").get();
+      globalInterval = parseInt(row?.value || '5', 10);
+    } catch(e) {}
+
+    // Add to products
+    const result = db.prepare(
+      `INSERT INTO products (name, url, store, current_price, notify_on_stock, notify_on_price_drop, check_interval_minutes, image_url)
+       VALUES (?, ?, ?, ?, 1, 1, ?, ?)`
+    ).run(item.name, item.url, store, item.price, globalInterval, item.image_url);
+
+    // Remove from found_items
+    db.prepare("DELETE FROM found_items WHERE id = ?").run(req.params.id);
+
+    // Initial check
+    checker.checkSingleProduct(result.lastInsertRowid).catch(e => console.error('Initial check failed:', e.message));
+
+    res.json({ ok: true, productId: result.lastInsertRowid });
+  } catch (e) {
+    if (e.message?.includes("UNIQUE")) {
+      db.prepare("DELETE FROM found_items WHERE id = ?").run(req.params.id);
+      return res.status(400).json({ error: "Izdelek se že sledi" });
+    }
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/found-items/:id", (req, res) => {
+  try {
+    db.prepare("DELETE FROM found_items WHERE id = ?").run(req.params.id);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/found-items/bulk-delete", (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "ids array required" });
+    const placeholders = ids.map(() => '?').join(',');
+    db.prepare(`DELETE FROM found_items WHERE id IN (${placeholders})`).run(...ids);
+    res.json({ ok: true, deleted: ids.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/found-items/bulk-promote", async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "ids array required" });
+    
+    let promoted = 0;
+    let errors = 0;
+
+    for (const id of ids) {
+      try {
+        const item = db.prepare("SELECT * FROM found_items WHERE id = ?").get(id);
+        if (!item) continue;
+
+        const store = item.store === 'custom' ? detectStoreFromUrl(item.url) : item.store;
+        let globalInterval = 5;
+        try {
+          const row = db.prepare("SELECT value FROM app_settings WHERE key = 'check_interval_minutes'").get();
+          globalInterval = parseInt(row?.value || '5', 10);
+        } catch(e) {}
+
+        db.prepare(
+          `INSERT INTO products (name, url, store, current_price, notify_on_stock, notify_on_price_drop, check_interval_minutes, image_url)
+           VALUES (?, ?, ?, ?, 1, 1, ?, ?)`
+        ).run(item.name, item.url, store, item.price, globalInterval, item.image_url);
+
+        db.prepare("DELETE FROM found_items WHERE id = ?").run(id);
+        promoted++;
+      } catch(e) { 
+        if (e.message?.includes("UNIQUE")) {
+          db.prepare("DELETE FROM found_items WHERE id = ?").run(id);
+        }
+        errors++; 
+      }
+    }
+    res.json({ ok: true, promoted, errors });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
