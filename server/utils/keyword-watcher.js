@@ -373,11 +373,27 @@ class KeywordWatcher {
       if (!match) return products;
       const campaignId = match[1];
 
+      // Also extract category filter if present in URL (?category=racunalnistvo)
+      const urlCategory = urlObj.searchParams.get('category');
+
       const GQL = `query($c: String!, $cat: String) {
         getCampaign(campaignId: $c, query: { isMobile: false, previewHash: "", abTestVariant: "", bannersPage: "" }) {
           productCollection(query: { categoryUrlKey: $cat }) {
             itemsTotalCount
-            items { ... on Product { id title urlKey mainVariant { availability { status } } } }
+            items { 
+              ... on Product { 
+                id 
+                title 
+                urlKey 
+                mainVariant { 
+                  price 
+                  priceRrp 
+                  availability { status } 
+                  mediaIds
+                  isAvailable
+                } 
+              } 
+            }
           }
         }
       }`;
@@ -400,48 +416,61 @@ class KeywordWatcher {
           return items
             .filter(p => p.urlKey && p.title)
             .filter(p => !keyword || this.isRelevant(p.title, p.urlKey, keyword))
-            .map(p => ({
-              name: p.title,
-              url: `${baseUrl}/proizvod/${p.urlKey}`,
-              price: null,
-              inStock: p.mainVariant?.availability?.status === 'A2' ? true : undefined,
-              image: '',
-            }));
-        } catch(e) { return []; }
+            .map(p => {
+              const mv = p.mainVariant || {};
+              const price = mv.price ? parseFloat(mv.price) : null;
+              const imgId = mv.mediaIds && mv.mediaIds.length > 0 ? mv.mediaIds[0] : null;
+              return {
+                name: p.title,
+                url: `${baseUrl}/proizvod/${p.urlKey}`,
+                price: price,
+                inStock: mv.availability?.status === 'A2' || mv.isAvailable === true ? true : undefined,
+                image: imgId ? `https://www.mimovrste.com/i/${imgId}/240/235` : '',
+              };
+            });
+        } catch(e) { console.error('  GQL Fetch Error:', e.message); return []; }
       };
 
-      // First: fetch without category filter (default first page)
-      console.log(`  [5] mimovrste campaign "${campaignId}" - fetching without category...`);
-      const defaultItems = await fetchCategory(null);
-      for (const p of defaultItems) { if (!products.find(x => x.url === p.url)) products.push(p); }
-      console.log(`  [5] Default: ${defaultItems.length} products`);
+      // If URL has a specific category, JUST fetch that one.
+      // Otherwise, scan all categories found on the page.
+      if (urlCategory) {
+        console.log(`  [5] mimovrste campaign "${campaignId}" - fetching category "${urlCategory}"...`);
+        const items = await fetchCategory(urlCategory);
+        for (const p of items) { if (!products.find(x => x.url === p.url)) products.push(p); }
+      } else {
+        // First: fetch without category filter (default first page)
+        console.log(`  [5] mimovrste campaign "${campaignId}" - fetching without category...`);
+        const defaultItems = await fetchCategory(null);
+        for (const p of defaultItems) { if (!products.find(x => x.url === p.url)) products.push(p); }
+        console.log(`  [5] Default: ${defaultItems.length} products`);
 
-      // Then: scrape category slugs from campaign page HTML and fetch each
-      try {
-        const pageRes = await http.get(searchUrl, {
-          headers: { 'User-Agent': this.getRandomUA(), 'Accept': 'text/html' },
-          timeout: 10000, validateStatus: () => true,
-        });
-        if (pageRes.status === 200) {
-          const $ = cheerio.load(pageRes.data);
-          const categories = new Set();
-          $(`a[href*="/kampanja/${campaignId}?category="]`).each((_, el) => {
-            const href = $(el).attr('href') || '';
-            const catMatch = href.match(/[?&]category=([^&]+)/);
-            if (catMatch) categories.add(catMatch[1]);
+        // Then: scrape category slugs from campaign page HTML and fetch each
+        try {
+          const pageRes = await http.get(searchUrl, {
+            headers: { 'User-Agent': this.getRandomUA(), 'Accept': 'text/html' },
+            timeout: 10000, validateStatus: () => true,
           });
-          console.log(`  [5] Found ${categories.size} categories: ${[...categories].join(', ')}`);
-          for (const cat of categories) {
-            const items = await fetchCategory(cat);
-            let added = 0;
-            for (const p of items) {
-              if (!products.find(x => x.url === p.url)) { products.push(p); added++; }
+          if (pageRes.status === 200) {
+            const $ = cheerio.load(pageRes.data);
+            const categories = new Set();
+            $(`a[href*="/kampanja/${campaignId}?category="]`).each((_, el) => {
+              const href = $(el).attr('href') || '';
+              const catMatch = href.match(/[?&]category=([^&]+)/);
+              if (catMatch) categories.add(catMatch[1]);
+            });
+            console.log(`  [5] Found ${categories.size} categories: ${[...categories].join(', ')}`);
+            for (const cat of categories) {
+              const items = await fetchCategory(cat);
+              let added = 0;
+              for (const p of items) {
+                if (!products.find(x => x.url === p.url)) { products.push(p); added++; }
+              }
+              console.log(`  [5] Category "${cat}": ${items.length} found, ${added} new (total: ${products.length})`);
+              await new Promise(r => setTimeout(r, 400));
             }
-            console.log(`  [5] Category "${cat}": ${items.length} found, ${added} new (total: ${products.length})`);
-            await new Promise(r => setTimeout(r, 400));
           }
-        }
-      } catch(e) { console.log(`  [5] Category scrape error: ${e.message}`); }
+        } catch(e) { console.log(`  [5] Category scrape error: ${e.message}`); }
+      }
 
       console.log(`  [5] ✅ mimovrste total: ${products.length} products`);
     } catch(e) { console.log(`  [5] ⚠️  ${e.message}`); }
