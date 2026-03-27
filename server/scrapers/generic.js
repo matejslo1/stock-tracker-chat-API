@@ -506,36 +506,58 @@ class GenericScraper {
     const result = { inStock: null, price: null, imageUrl: null, rawStockText: '' };
     const outOfStockTexts = (storeConfig.out_of_stock_text || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
     const inStockTexts = (storeConfig.in_stock_text || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+    const stockSignals = [];
+    const rawTexts = [];
+    const isProbablyHidden = (el) => {
+      const style = (el.attr('style') || '').toLowerCase();
+      const cls = (el.attr('class') || '').toLowerCase();
+      return el.attr('hidden') !== undefined
+        || el.attr('aria-hidden') === 'true'
+        || style.includes('display:none')
+        || style.includes('visibility:hidden')
+        || cls.includes('hidden');
+    };
+    const registerSignal = (text, signal) => {
+      const normalized = String(text || '').toLowerCase().trim();
+      if (!normalized) return;
+      rawTexts.push(normalized);
+      if (signal !== null) stockSignals.push(signal);
+    };
 
     if (storeConfig.stock_selector) {
       const selectors = storeConfig.stock_selector.split(',');
       for (const sel of selectors) {
-        const el = $(sel.trim());
-        if (el.length > 0) {
+        $(sel.trim()).each((_, node) => {
+          const el = $(node);
+          if (isProbablyHidden(el)) return;
           const text = el.text().toLowerCase().trim();
-          result.rawStockText = text;
-          if (outOfStockTexts.some(t => t && text.includes(t))) result.inStock = false;
-          else if (inStockTexts.some(t => t && text.includes(t))) result.inStock = true;
-          break;
-        }
+          if (!text) return;
+          const hasOutOfStock = outOfStockTexts.some(t => t && text.includes(t));
+          const hasInStock = inStockTexts.some(t => t && text.includes(t));
+          registerSignal(text, hasInStock ? true : hasOutOfStock ? false : null);
+        });
       }
     }
 
     if (storeConfig.add_to_cart_selector) {
       const cartSelectors = storeConfig.add_to_cart_selector.split(',');
       for (const sel of cartSelectors) {
-        const btn = $(sel.trim());
-        if (btn.length > 0) {
+        $(sel.trim()).each((_, node) => {
+          const btn = $(node);
+          if (isProbablyHidden(btn)) return;
           const isDisabled = btn.prop('disabled') || btn.attr('disabled') !== undefined || btn.attr('aria-disabled') === 'true' || btn.hasClass('disabled');
           const btnText = btn.text().trim().toLowerCase();
+          if (!btnText) return;
           const soldOutTexts = ['sold out', 'out of stock', 'razprodano', 'ni na zalogi', 'unavailable'];
           const hasSoldOut = soldOutTexts.some(t => btnText.includes(t));
-          if (isDisabled || hasSoldOut) result.inStock = false;
-          else if (result.inStock === null) result.inStock = true;
-          break;
-        }
+          registerSignal(btnText, isDisabled || hasSoldOut ? false : true);
+        });
       }
     }
+
+    result.rawStockText = rawTexts.join(' | ');
+    if (stockSignals.includes(true)) result.inStock = true;
+    else if (stockSignals.includes(false)) result.inStock = false;
 
     if (storeConfig.price_selector) {
       const priceSelectors = storeConfig.price_selector.split(',');
