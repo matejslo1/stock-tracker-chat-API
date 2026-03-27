@@ -7,7 +7,7 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "build": "npm --prefix server install && npm --prefix client install && npm --prefix client run build && rm -rf server/public/* && cp -r client/build/* server/public/",
+    "build": "npm --prefix server install && npm --prefix client install && npm --prefix client run build && node scripts/prepare-static.js",
     "start": "node server/index.js"
   }
 }

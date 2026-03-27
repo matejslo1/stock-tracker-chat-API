@@ -3,12 +3,15 @@ nixPkgs = ["nodejs_20"]
 
 [phases.install]
 cmds = [
-  "npm ci"
+  "npm ci",
+  "npm --prefix server install",
+  "npm --prefix client install"
 ]
 
 [phases.build]
 cmds = [
-  "npm run build"
+  "npm --prefix client run build",
+  "node scripts/prepare-static.js"
 ]
 
 [start]
