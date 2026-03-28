@@ -1353,7 +1353,7 @@ const FoundItemsView = ({ items, onPromote, onDelete, onBulkPromote, onBulkDelet
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">Zaloga:</span>
               <div className="flex gap-1">
-                {[["all","Vse"],["in_stock","Na zalogi"],["out_of_stock","Ni"],["preorder","Prednaročilo"]].map(([val, label]) => (
+                {[["all","Vse"],["in_stock","Na zalogi"],["out_of_stock","Ni na zalogi"],["preorder","Prednaročilo"]].map(([val, label]) => (
                   <button key={val} onClick={() => setFilterStock(val)}
                     className={cn("px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap",
                       filterStock === val ? "bg-gray-900 text-white shadow-sm" : "bg-gray-100 text-gray-500 hover:bg-gray-200")}>
