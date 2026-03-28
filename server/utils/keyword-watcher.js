@@ -314,7 +314,8 @@ class KeywordWatcher {
             || container.find('.sold-out-badge,.badge--sold-out,[data-sold-out],.availability').text().toLowerCase().includes('vypredané');
 
           const imageEl = container.find('img').first();
-          const image = imageEl.attr('src') || imageEl.attr('data-src') || imageEl.attr('data-lazy') || imageEl.attr('data-original') || imageEl.attr('data-lazy-src') || '';
+          const _imgCandidates1 = [imageEl.attr('src'), imageEl.attr('data-src'), imageEl.attr('data-lazy'), imageEl.attr('data-original'), imageEl.attr('data-lazy-src')];
+          const image = _imgCandidates1.find(u => u && u.startsWith('http')) || '';
 
           seen.add(fullUrl);
           products.push({
@@ -346,8 +347,9 @@ class KeywordWatcher {
             || container.text().toLowerCase().includes('sold out');
 
           const imgEl = $(el).find('img').first();
-          const image = imgEl.attr('src') || imgEl.attr('data-src') || imgEl.attr('data-lazy') || imgEl.attr('data-original') || imgEl.attr('data-lazy-src') || '';
-          products.push({ name: name.substring(0, 200), url: fullUrl, price: extractPrice(container), inStock: hasSoldOut ? false : undefined, image: image.startsWith('//') ? 'https:' + image : image });
+          const _imgCandidates2 = [imgEl.attr('src'), imgEl.attr('data-src'), imgEl.attr('data-lazy'), imgEl.attr('data-original'), imgEl.attr('data-lazy-src')];
+          const image = _imgCandidates2.find(u => u && u.startsWith('http')) || '';
+          products.push({ name: name.substring(0, 200), url: fullUrl, price: extractPrice(container), inStock: hasSoldOut ? false : undefined, image });
           pageProducts++;
         });
 

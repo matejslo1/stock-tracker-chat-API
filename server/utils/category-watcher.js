@@ -21,6 +21,18 @@ class CategoryWatcher {
     return this.userAgents[Math.floor(Math.random() * this.userAgents.length)];
   }
 
+  extractImageUrl(imgEl) {
+    const candidates = [
+      imgEl.attr('src'),
+      imgEl.attr('data-src'),
+      imgEl.attr('data-lazy'),
+      imgEl.attr('data-original'),
+      imgEl.attr('data-lazy-src'),
+    ];
+    const url = candidates.find(u => u && u.startsWith('http')) || '';
+    return url.startsWith('//') ? `https:${url}` : url;
+  }
+
   normalizeText(value) {
     return String(value || '')
       .toLowerCase()
@@ -140,7 +152,7 @@ class CategoryWatcher {
 
       const normalizedText = containerText.toLowerCase();
       const imageEl = container.find('img').first();
-      const image = imageEl.attr('src') || imageEl.attr('data-src') || imageEl.attr('data-lazy') || imageEl.attr('data-original') || imageEl.attr('data-lazy-src') || imageEl.attr('data-srcset') || '';
+      const image = this.extractImageUrl(imageEl);
       const hasSoldOut = normalizedText.includes('vypredan')
         || normalizedText.includes('nie je skladom')
         || normalizedText.includes('nedostupn');
@@ -154,7 +166,7 @@ class CategoryWatcher {
         url: fullUrl,
         price: this.extractPrice(container),
         inStock: hasSoldOut ? false : hasInStock ? true : undefined,
-        image: image.startsWith('//') ? `https:${image}` : image,
+        image,
       });
       return true;
     };
@@ -199,7 +211,7 @@ class CategoryWatcher {
             || container.find('.sold-out-badge,.badge--sold-out,[data-sold-out],.availability').text().toLowerCase().includes('vypredané');
 
           const imageEl = container.find('img').first();
-          const image = imageEl.attr('src') || imageEl.attr('data-src') || imageEl.attr('data-lazy') || imageEl.attr('data-original') || imageEl.attr('data-lazy-src') || '';
+          const image = this.extractImageUrl(imageEl);
 
           seen.add(fullUrl);
           products.push({
@@ -207,7 +219,7 @@ class CategoryWatcher {
             url: fullUrl,
             price: this.extractPrice(container),
             inStock: hasSoldOut ? false : undefined,
-            image: image.startsWith('//') ? `https:${image}` : image,
+            image,
           });
           pageProducts++;
         });
@@ -225,7 +237,7 @@ class CategoryWatcher {
           const hasSoldOut = container.find('.sold-out-badge,.badge--sold-out,[data-sold-out]').length > 0
             || container.text().toLowerCase().includes('sold out');
           const imgEl = $(el).find('img').first();
-          const image = imgEl.attr('src') || imgEl.attr('data-src') || imgEl.attr('data-lazy') || imgEl.attr('data-original') || imgEl.attr('data-lazy-src') || '';
+          const image = this.extractImageUrl(imgEl);
 
           seen.add(fullUrl);
           products.push({
@@ -233,7 +245,7 @@ class CategoryWatcher {
             url: fullUrl,
             price: this.extractPrice(container),
             inStock: hasSoldOut ? false : undefined,
-            image: image.startsWith('//') ? `https:${image}` : image,
+            image,
           });
           pageProducts++;
         });
