@@ -140,7 +140,7 @@ class CategoryWatcher {
 
       const normalizedText = containerText.toLowerCase();
       const imageEl = container.find('img').first();
-      const image = imageEl.attr('src') || imageEl.attr('data-src') || imageEl.attr('data-srcset') || '';
+      const image = imageEl.attr('src') || imageEl.attr('data-src') || imageEl.attr('data-lazy') || imageEl.attr('data-original') || imageEl.attr('data-lazy-src') || imageEl.attr('data-srcset') || '';
       const hasSoldOut = normalizedText.includes('vypredan')
         || normalizedText.includes('nie je skladom')
         || normalizedText.includes('nedostupn');
@@ -393,6 +393,15 @@ class CategoryWatcher {
             'category',
             watch.id
           );
+          // Update original_price and image for existing items (INSERT OR IGNORE skips them)
+          if (product.originalPrice || product.image) {
+            db.prepare(`
+              UPDATE found_items SET
+                original_price = COALESCE(?, original_price),
+                image_url = COALESCE(NULLIF(?, ''), image_url)
+              WHERE url = ? AND (original_price IS NULL OR image_url IS NULL OR image_url = '')
+            `).run(product.originalPrice || null, product.image || '', product.url);
+          }
           console.log(`    🔍 Discovered: ${product.name}`);
         }
       } catch (e) { console.error('Error adding new product from category:', e.message); }

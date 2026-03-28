@@ -698,6 +698,15 @@ class KeywordWatcher {
               'keyword',
               watch.id
             );
+            // Update original_price and image for existing items
+            if (product.originalPrice || product.image) {
+              db.prepare(`
+                UPDATE found_items SET
+                  original_price = COALESCE(?, original_price),
+                  image_url = COALESCE(NULLIF(?, ''), image_url)
+                WHERE url = ? AND (original_price IS NULL OR image_url IS NULL OR image_url = '')
+              `).run(product.originalPrice || null, product.image || '', product.url);
+            }
             console.log(`    🔍 Discovered: ${product.name}`);
           }
         } catch(e) { console.error('Error adding new product:', e.message); }
