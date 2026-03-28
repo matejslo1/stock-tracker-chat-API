@@ -53,15 +53,31 @@ async function initDatabase() {
   // Load existing DB or create new
   if (fs.existsSync(DB_PATH)) {
     const fileBuffer = fs.readFileSync(DB_PATH);
-    db = new SQL.Database(fileBuffer);
-    console.log('📂 Loaded existing database');
+    try {
+      db = new SQL.Database(fileBuffer);
+      // Verify DB integrity before proceeding
+      db.run('PRAGMA journal_mode = MEMORY');
+      db.run('PRAGMA foreign_keys = ON');
+      const integrityResult = db.exec('PRAGMA integrity_check');
+      const integrityOk = integrityResult?.[0]?.values?.[0]?.[0] === 'ok';
+      if (!integrityOk) throw new Error('integrity_check failed');
+      console.log('📂 Loaded existing database');
+    } catch (e) {
+      console.error(`⚠️  Database corrupted (${e.message}), starting fresh. Backup saved as tracker.db.bak`);
+      try {
+        fs.copyFileSync(DB_PATH, DB_PATH + '.bak');
+      } catch (_) {}
+      db = new SQL.Database();
+      console.log('📂 Created new database (recovery)');
+    }
   } else {
     db = new SQL.Database();
     console.log('📂 Created new database');
   }
 
-  db.run('PRAGMA journal_mode = MEMORY');
-  db.run('PRAGMA foreign_keys = ON');
+  if (!db.run) throw new Error('DB not initialized');
+  try { db.run('PRAGMA journal_mode = MEMORY'); } catch(_) {}
+  try { db.run('PRAGMA foreign_keys = ON'); } catch(_) {}
 
   // Create tables
   db.run(`
