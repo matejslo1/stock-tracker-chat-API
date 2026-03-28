@@ -883,6 +883,83 @@ app.get("/debug/db-path", (req, res) => {
   res.json({ DB_PATH: process.env.DB_PATH || null });
 });
 
+// Recovery endpoint: restore data from corrupted .bak file
+app.post("/api/restore-from-backup", async (req, res) => {
+  const fs = require('fs');
+  const initSqlJs = require('sql.js');
+  const DB_PATH = process.env.DB_PATH || (fs.existsSync('/data') ? '/data/tracker.db' : require('path').join(__dirname, 'data', 'tracker.db'));
+  const BAK_PATH = DB_PATH + '.bak';
+
+  if (!fs.existsSync(BAK_PATH)) {
+    return res.status(404).json({ error: 'No backup file found at ' + BAK_PATH });
+  }
+
+  try {
+    const SQL = await initSqlJs();
+    const buf = fs.readFileSync(BAK_PATH);
+    const bakDb = new SQL.Database(buf);
+    const report = { restored: {}, errors: [] };
+
+    const tryRead = (sql) => {
+      try { return bakDb.exec(sql)?.[0]?.values || []; }
+      catch(e) { return null; }
+    };
+
+    // products
+    const products = tryRead('SELECT name, url, store, target_price, current_price, in_stock, is_preorder, last_checked, image_url, check_interval_minutes, notify_on_stock, notify_on_price_drop, price_drop_threshold_amount, price_drop_threshold_percentage FROM products');
+    if (products) {
+      let count = 0;
+      for (const r of products) {
+        try {
+          db.prepare('INSERT OR IGNORE INTO products (name, url, store, target_price, current_price, in_stock, is_preorder, last_checked, image_url, check_interval_minutes, notify_on_stock, notify_on_price_drop, price_drop_threshold_amount, price_drop_threshold_percentage) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(...r);
+          count++;
+        } catch(e) { report.errors.push('product: ' + e.message); }
+      }
+      report.restored.products = count;
+    }
+
+    // keyword_watches
+    const kw = tryRead('SELECT keyword, store_url, store_name, search_url, notify_new_products, auto_add_tracking, check_interval_minutes, min_price, max_price, include_keywords, exclude_keywords FROM keyword_watches');
+    if (kw) {
+      let count = 0;
+      for (const r of kw) {
+        try {
+          db.prepare('INSERT OR IGNORE INTO keyword_watches (keyword, store_url, store_name, search_url, notify_new_products, auto_add_tracking, check_interval_minutes, min_price, max_price, include_keywords, exclude_keywords) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(...r);
+          count++;
+        } catch(e) { report.errors.push('keyword_watch: ' + e.message); }
+      }
+      report.restored.keyword_watches = count;
+    }
+
+    // category_watches
+    const cw = tryRead('SELECT category_name, category_url, store_name, notify_new_products, auto_add_tracking, check_interval_minutes, min_price, max_price, include_keywords, exclude_keywords FROM category_watches');
+    if (cw) {
+      let count = 0;
+      for (const r of cw) {
+        try {
+          db.prepare('INSERT OR IGNORE INTO category_watches (category_name, category_url, store_name, notify_new_products, auto_add_tracking, check_interval_minutes, min_price, max_price, include_keywords, exclude_keywords) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(...r);
+          count++;
+        } catch(e) { report.errors.push('category_watch: ' + e.message); }
+      }
+      report.restored.category_watches = count;
+    }
+
+    // app_settings
+    const settings = tryRead('SELECT key, value FROM app_settings');
+    if (settings) {
+      for (const r of settings) {
+        try { db.prepare('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?,?)').run(...r); } catch(e) {}
+      }
+      report.restored.app_settings = settings.length;
+    }
+
+    bakDb.close();
+    res.json({ ok: true, report });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // -----------------------------
 // 4) SPA fallback (MUST be last)
 // -----------------------------
