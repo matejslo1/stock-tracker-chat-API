@@ -622,6 +622,7 @@ const CategoryModal = ({ watch, onSave, onClose, appSettings }) => {
     category_name: watch?.category_name || "",
     category_url: watch?.category_url || "",
     notify_new_products: watch ? watch.notify_new_products !== 0 : true,
+    notify_stock_changes: watch ? watch.notify_stock_changes === 1 : false,
     auto_add_tracking: watch ? watch.auto_add_tracking === 1 : false,
     check_interval_minutes: watch?.check_interval_minutes != null ? String(watch.check_interval_minutes) : "0",
     min_price: watch?.min_price != null ? String(watch.min_price) : "",
@@ -637,6 +638,7 @@ const CategoryModal = ({ watch, onSave, onClose, appSettings }) => {
 
   const toggleFields = [
     { key: "notify_new_products", icon: <Bell size={16} />, label: "Obvesti ob novih izdelkih", color: "#10b981" },
+    { key: "notify_stock_changes", icon: <TrendingDown size={16} />, label: "Obvesti ko pride na zalogo", color: "#8b5cf6" },
     { key: "auto_add_tracking", icon: <Zap size={16} />, label: "Avtomatsko dodaj v sledenje", color: "#f97316" },
   ];
 

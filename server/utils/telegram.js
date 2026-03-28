@@ -613,6 +613,31 @@ class TelegramService {
     }
   }
 
+  async sendCategoryStockChangeAlert(watch, products) {
+    if (!this.initialized || !this.chatId) return false;
+    if (this._isPaused() || this._isQuietHours()) return false;
+    const label = watch.category_name || watch.category_url;
+    let message = `🟢 *NA ZALOGI V KATEGORIJI*\n🏪 ${watch.store_url}\n📂 ${label}\n\n`;
+    products.slice(0, 10).forEach((p, i) => {
+      message += `${i + 1}. *${p.name}*\n`;
+      if (p.price) message += `   💰 ${p.price.toFixed(2)} €`;
+      if (p.originalPrice && p.originalPrice > p.price) {
+        const pct = Math.round((1 - p.price / p.originalPrice) * 100);
+        message += ` ~~${p.originalPrice.toFixed(2)} €~~ (-${pct}%)`;
+      }
+      if (p.price) message += '\n';
+      message += `   🔗 [Odpri](${p.url})\n\n`;
+    });
+    if (products.length > 10) message += `_...in še ${products.length - 10} več_\n`;
+    try {
+      await this.bot.sendMessage(this.chatId, message, { parse_mode: 'Markdown', disable_web_page_preview: true });
+      return true;
+    } catch (e) {
+      console.error('Failed to send category stock change alert:', e.message);
+      return false;
+    }
+  }
+
   async sendPurchaseAttemptAlert(product, status, details) {
     if (!this.initialized || !this.chatId) return false;
     const emoji = status === 'success' ? '✅' : '⚠️';

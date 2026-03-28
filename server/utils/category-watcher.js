@@ -452,6 +452,30 @@ class CategoryWatcher {
         .run(null, 'category_watch', `Found ${newProducts.length} new in category "${watch.category_name || watch.category_url}"`);
     }
 
+    // Detect stock changes: found_items that flipped from out-of-stock to in-stock
+    if (watch.notify_stock_changes) {
+      const backInStock = [];
+      for (const product of filteredProducts) {
+        if (product.inStock !== true) continue;
+        const existing = db.prepare('SELECT in_stock, original_price FROM found_items WHERE url = ?').get(product.url);
+        if (existing && existing.in_stock === 0) {
+          backInStock.push({ ...product, originalPrice: existing.original_price || product.originalPrice || null });
+        }
+      }
+      if (backInStock.length > 0) {
+        await telegram.sendCategoryStockChangeAlert(watch, backInStock);
+        db.prepare('INSERT INTO notifications (product_id, type, message) VALUES (?, ?, ?)')
+          .run(null, 'category_watch', `${backInStock.length} products back in stock in "${watch.category_name || watch.category_url}"`);
+      }
+    }
+
+    // Update in_stock status for all known found_items from this watch
+    for (const product of filteredProducts) {
+      if (product.inStock === undefined) continue;
+      db.prepare('UPDATE found_items SET in_stock = ? WHERE url = ? AND source_type = ? AND source_id = ?')
+        .run(product.inStock ? 1 : 0, product.url, 'category', watch.id);
+    }
+
     db.prepare(`UPDATE category_watches SET known_product_urls=?, last_checked=datetime('now'), last_found_count=?, updated_at=datetime('now') WHERE id=?`)
       .run(JSON.stringify(filteredProducts.map(product => product.url)), filteredProducts.length, watch.id);
 

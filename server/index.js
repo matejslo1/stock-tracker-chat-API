@@ -528,7 +528,7 @@ app.post("/api/category-watches", async (req, res) => {
   try {
     const {
       category_name, category_url,
-      notify_new_products, auto_add_tracking,
+      notify_new_products, notify_stock_changes, auto_add_tracking,
       check_interval_minutes, min_price, max_price,
       include_keywords, exclude_keywords
     } = req.body;
@@ -542,14 +542,15 @@ app.post("/api/category-watches", async (req, res) => {
     const storeName = detectStoreFromUrl(storeUrl);
 
     const result = db.prepare(
-      `INSERT INTO category_watches (category_name, category_url, store_url, store_name, notify_new_products, auto_add_tracking, check_interval_minutes, min_price, max_price, include_keywords, exclude_keywords)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO category_watches (category_name, category_url, store_url, store_name, notify_new_products, notify_stock_changes, auto_add_tracking, check_interval_minutes, min_price, max_price, include_keywords, exclude_keywords)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       category_name || null,
       normalizedCategoryUrl,
       storeUrl,
       storeName,
       notify_new_products !== false ? 1 : 0,
+      notify_stock_changes ? 1 : 0,
       auto_add_tracking ? 1 : 0,
       parseInt(check_interval_minutes, 10) || 0,
       min_price ? parseFloat(min_price) : null,
@@ -567,7 +568,7 @@ app.put("/api/category-watches/:id", async (req, res) => {
   try {
     const {
       category_name, category_url,
-      notify_new_products, auto_add_tracking,
+      notify_new_products, notify_stock_changes, auto_add_tracking,
       check_interval_minutes, min_price, max_price,
       include_keywords, exclude_keywords
     } = req.body;
@@ -578,13 +579,14 @@ app.put("/api/category-watches/:id", async (req, res) => {
     })();
     const storeName = detectStoreFromUrl(storeUrl);
     db.prepare(
-      `UPDATE category_watches SET category_name=?, category_url=?, store_url=?, store_name=?, notify_new_products=?, auto_add_tracking=?, check_interval_minutes=?, min_price=?, max_price=?, include_keywords=?, exclude_keywords=?, updated_at=datetime('now') WHERE id=?`
+      `UPDATE category_watches SET category_name=?, category_url=?, store_url=?, store_name=?, notify_new_products=?, notify_stock_changes=?, auto_add_tracking=?, check_interval_minutes=?, min_price=?, max_price=?, include_keywords=?, exclude_keywords=?, updated_at=datetime('now') WHERE id=?`
     ).run(
       category_name || null,
       normalizedCategoryUrl,
       storeUrl,
       storeName,
       notify_new_products ? 1 : 0,
+      notify_stock_changes ? 1 : 0,
       auto_add_tracking ? 1 : 0,
       parseInt(check_interval_minutes, 10) || 0,
       min_price ? parseFloat(min_price) : null,
