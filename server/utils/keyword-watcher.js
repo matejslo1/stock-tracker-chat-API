@@ -643,11 +643,12 @@ class KeywordWatcher {
     const newProducts = filteredProducts.filter(p => !knownUrls.includes(p.url));
     console.log(`  Found ${foundProducts.length} products, ${newProducts.length} new`);
 
-    // Notify new products
-    if (newProducts.length > 0 && watch.notify_new_products) {
-      await telegram.sendKeywordAlert(watch, newProducts);
+    // Add new products to tracking or found_items (always, regardless of notify setting)
+    if (newProducts.length > 0) {
+      if (watch.notify_new_products) {
+        await telegram.sendKeywordAlert(watch, newProducts);
+      }
 
-      // Add to tracking OR to found_items
       const checker = require('./checker');
       const toCheck = [];
       for (const product of newProducts) {
