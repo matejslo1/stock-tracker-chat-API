@@ -107,7 +107,7 @@ app.post("/api/products", async (req, res) => {
       if (u.searchParams.toString() === '') u.search = '';
       u.hash = '';
       url = u.toString();
-    } catch(e) {}
+    } catch(e) { console.error('Telegram initialization error:', e.message); }
     const resolvedStore = resolvePreferredStore(url, store);
     const result = db.prepare(
       `INSERT INTO products (name, url, store, target_price, auto_purchase, notify_on_stock, notify_on_price_drop, price_drop_threshold_amount, price_drop_threshold_percentage, check_interval_minutes, max_order_qty)
@@ -322,7 +322,7 @@ app.post("/api/analyze-url", async (req, res) => {
     const fakeProduct = { id: 0, url, store: scraperStore, name: "" };
 
     let result = null;
-    try { result = await scraper.scrape(fakeProduct); } catch(e) {}
+    try { result = await scraper.scrape(fakeProduct); } catch(e) { console.error('Telegram initialization error:', e.message); }
 
     if (result && result.isShopify && detectedStore === "custom") detectedStore = "shopify";
 
@@ -349,10 +349,10 @@ app.post("/api/analyze-url", async (req, res) => {
             if (colRes.status === 200 && colRes.data?.products?.[0]) {
               canonicalUrl = `${u.origin}/products/${colRes.data.products[0].handle}`;
             }
-          } catch(e) {}
+          } catch(e) { console.error('Telegram initialization error:', e.message); }
         }
       }
-    } catch(e) {}
+    } catch(e) { console.error('Telegram initialization error:', e.message); }
 
     res.json({
       detected_store: detectedStore,
@@ -640,7 +640,7 @@ app.post("/api/found-items/:id/promote", async (req, res) => {
     try {
       const row = db.prepare("SELECT value FROM app_settings WHERE key = 'check_interval_minutes'").get();
       globalInterval = parseInt(row?.value || '5', 10);
-    } catch(e) {}
+    } catch(e) { console.error('Telegram initialization error:', e.message); }
 
     // Add to products
     const result = db.prepare(
@@ -699,7 +699,7 @@ app.post("/api/found-items/bulk-promote", async (req, res) => {
         try {
           const row = db.prepare("SELECT value FROM app_settings WHERE key = 'check_interval_minutes'").get();
           globalInterval = parseInt(row?.value || '5', 10);
-        } catch(e) {}
+        } catch(e) { console.error('Telegram initialization error:', e.message); }
 
         db.prepare(
           `INSERT INTO products (name, url, store, current_price, in_stock, is_preorder, notify_on_stock, notify_on_price_drop, check_interval_minutes, image_url)
@@ -730,7 +730,7 @@ app.get("/api/cart/domains", (req, res) => {
         if (!domainMap[domain]) domainMap[domain] = { domain, store: p.store, products: [], inStock: 0 };
         domainMap[domain].products.push(p);
         if (p.in_stock) domainMap[domain].inStock++;
-      } catch(e) {}
+      } catch(e) { console.error('Telegram initialization error:', e.message); }
     });
     res.json(Object.values(domainMap));
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -920,7 +920,7 @@ async function start() {
           db.prepare('UPDATE products SET url = ? WHERE id = ?').run(u.toString(), p.id);
           console.log(`🧹 Cleaned URL for product ${p.id}: ${u.toString()}`);
         }
-      } catch(e) {}
+      } catch(e) { console.error('Telegram initialization error:', e.message); }
     }
   } catch(e) { console.log('URL cleanup skipped:', e.message); }
 
@@ -931,8 +931,8 @@ async function start() {
   try {
     const tokenRow = db.prepare("SELECT value FROM app_settings WHERE key = 'telegram_token'").get();
     const chatRow = db.prepare("SELECT value FROM app_settings WHERE key = 'telegram_chat_id'").get();
-    if (tokenRow) await telegram.initialize(tokenRow.value, chatRow?.value);
-  } catch(e) {}
+    await telegram.initialize(tokenRow?.value, chatRow?.value);
+  } catch(e) { console.error('Telegram initialization error:', e.message); }
 
   // Register Telegram manual check handler
   telegram.onManualCheckHandler(() => checker.checkAll(null, { force: true }));
