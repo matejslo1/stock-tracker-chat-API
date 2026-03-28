@@ -1236,6 +1236,7 @@ const FoundItemsView = ({ items, onPromote, onDelete, onBulkPromote, onBulkDelet
   const [filterSource, setFilterSource] = useState("all");
   const [sort, setSort] = useState("newest");
   const [minDiscount, setMinDiscount] = useState("");
+  const [filterStock, setFilterStock] = useState("all");
 
   const getDiscount = (item) => {
     if (!item.original_price || !item.price || item.original_price <= item.price) return null;
@@ -1250,6 +1251,7 @@ const FoundItemsView = ({ items, onPromote, onDelete, onBulkPromote, onBulkDelet
       const pct = getDiscount(i);
       if (pct === null || pct < Number(minDiscount)) return false;
     }
+    if (!matchesStockFilter(i, filterStock)) return false;
     return true;
   });
 
@@ -1343,6 +1345,19 @@ const FoundItemsView = ({ items, onPromote, onDelete, onBulkPromote, onBulkDelet
                     className={cn("px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap",
                       minDiscount === v ? "bg-red-600 text-white shadow-sm" : "bg-gray-100 text-gray-500 hover:bg-gray-200")}>
                     {v === "" ? "Vse" : `${v}%+`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">Zaloga:</span>
+              <div className="flex gap-1">
+                {[["all","Vse"],["in_stock","Na zalogi"],["out_of_stock","Ni"],["preorder","Prednaročilo"]].map(([val, label]) => (
+                  <button key={val} onClick={() => setFilterStock(val)}
+                    className={cn("px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap",
+                      filterStock === val ? "bg-gray-900 text-white shadow-sm" : "bg-gray-100 text-gray-500 hover:bg-gray-200")}>
+                    {label}
                   </button>
                 ))}
               </div>
