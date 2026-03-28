@@ -1145,6 +1145,8 @@ const FoundItemCard = ({ item, onPromote, onDelete, selected, onSelect }) => {
   const isPreorder = item.is_preorder === 1 || item.is_preorder === true;
   const hasStockInfo = [0, 1, false, true].includes(item.in_stock);
   const isInStock = item.in_stock === 1 || item.in_stock === true;
+  const discountPct = (item.original_price && item.price && item.original_price > item.price)
+    ? Math.round((1 - item.price / item.original_price) * 100) : null;
   return (
     <div className={cn("group relative bg-white rounded-2xl border transition-all duration-300 overflow-hidden hover:shadow-lg hover:border-orange-300",
       isPreorder ? "border-amber-200 bg-amber-50/30" : hasStockInfo ? (isInStock ? "border-emerald-200 bg-emerald-50/30" : "border-red-200 bg-red-50/30") : "border-gray-200",
@@ -1187,12 +1189,19 @@ const FoundItemCard = ({ item, onPromote, onDelete, selected, onSelect }) => {
           <div className="flex items-center justify-between mt-auto pt-3 border-t border-gray-100">
             <div>
               {item.price ? (
-                <div className="text-lg font-black text-gray-900">
-                  {item.price.toFixed(2)}
-                  <span className="text-xs font-medium text-gray-500 ml-1">EUR</span>
+                <div className="flex items-baseline gap-1.5 flex-wrap">
+                  <span className="text-lg font-black text-gray-900">
+                    {item.price.toFixed(2)}<span className="text-xs font-medium text-gray-500 ml-1">EUR</span>
+                  </span>
+                  {discountPct && (
+                    <span className="text-xs font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">-{discountPct}%</span>
+                  )}
                 </div>
               ) : (
                 <div className="text-sm font-semibold text-gray-400 italic">Cena neznana</div>
+              )}
+              {item.original_price && item.price && item.original_price > item.price && (
+                <div className="text-xs text-gray-400 line-through">{item.original_price.toFixed(2)} EUR</div>
               )}
               <div className="text-[10px] text-gray-400 mt-0.5">{timeAgo(item.created_at)}</div>
             </div>
@@ -1224,17 +1233,28 @@ const FoundItemsView = ({ items, onPromote, onDelete, onBulkPromote, onBulkDelet
   const [filterStore, setFilterStore] = useState("all");
   const [filterSource, setFilterSource] = useState("all");
   const [sort, setSort] = useState("newest");
+  const [minDiscount, setMinDiscount] = useState("");
+
+  const getDiscount = (item) => {
+    if (!item.original_price || !item.price || item.original_price <= item.price) return null;
+    return Math.round((1 - item.price / item.original_price) * 100);
+  };
 
   const filtered = items.filter(i => {
     if (search && !i.name.toLowerCase().includes(search.toLowerCase())) return false;
     if (filterStore !== "all" && (i.store || detectStoreFromProduct(i)) !== filterStore) return false;
     if (filterSource !== "all" && i.source_type !== filterSource) return false;
+    if (minDiscount !== "") {
+      const pct = getDiscount(i);
+      if (pct === null || pct < Number(minDiscount)) return false;
+    }
     return true;
   });
 
   const sorted = [...filtered].sort((a, b) => {
     if (sort === "price_asc") return (a.price || 999999) - (b.price || 999999);
     if (sort === "price_desc") return (b.price || 0) - (a.price || 0);
+    if (sort === "discount") return (getDiscount(b) || 0) - (getDiscount(a) || 0);
     if (sort === "name") return a.name.localeCompare(b.name);
     return new Date(b.created_at) - new Date(a.created_at);
   });
@@ -1283,7 +1303,7 @@ const FoundItemsView = ({ items, onPromote, onDelete, onBulkPromote, onBulkDelet
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">Sortiraj:</span>
               <div className="flex bg-gray-100 rounded-xl p-1 w-full">
-                {[["newest","Najnovejše"],["price_asc","Cena ↑"],["price_desc","Cena ↓"],["name","Ime"]].map(([val,label]) => (
+                {[["newest","Najnovejše"],["price_asc","Cena ↑"],["price_desc","Cena ↓"],["discount","Znižanje ↓"],["name","Ime"]].map(([val,label]) => (
                   <button key={val} onClick={() => setSort(val)}
                     className={cn("flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all",
                       sort === val ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700")}>
@@ -1308,6 +1328,19 @@ const FoundItemsView = ({ items, onPromote, onDelete, onBulkPromote, onBulkDelet
                     className={cn("px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap",
                       filterStore === s.store_name ? "bg-gray-900 text-white shadow-sm" : "bg-gray-100 text-gray-500 hover:bg-gray-200")}>
                     {s.store_name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">Min. znižanje:</span>
+              <div className="flex gap-1">
+                {["", "10", "20", "30", "40", "50"].map(v => (
+                  <button key={v} onClick={() => setMinDiscount(v)}
+                    className={cn("px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap",
+                      minDiscount === v ? "bg-red-600 text-white shadow-sm" : "bg-gray-100 text-gray-500 hover:bg-gray-200")}>
+                    {v === "" ? "Vse" : `${v}%+`}
                   </button>
                 ))}
               </div>

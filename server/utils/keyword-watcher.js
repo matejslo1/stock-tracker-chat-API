@@ -314,7 +314,7 @@ class KeywordWatcher {
             || container.find('.sold-out-badge,.badge--sold-out,[data-sold-out],.availability').text().toLowerCase().includes('vypredané');
 
           const imageEl = container.find('img').first();
-          const image = imageEl.attr('src') || imageEl.attr('data-src') || '';
+          const image = imageEl.attr('src') || imageEl.attr('data-src') || imageEl.attr('data-lazy') || imageEl.attr('data-original') || imageEl.attr('data-lazy-src') || '';
 
           seen.add(fullUrl);
           products.push({
@@ -346,7 +346,7 @@ class KeywordWatcher {
             || container.text().toLowerCase().includes('sold out');
 
           const imgEl = $(el).find('img').first();
-          const image = imgEl.attr('src') || imgEl.attr('data-src') || '';
+          const image = imgEl.attr('src') || imgEl.attr('data-src') || imgEl.attr('data-lazy') || imgEl.attr('data-original') || imgEl.attr('data-lazy-src') || '';
           products.push({ name: name.substring(0, 200), url: fullUrl, price: extractPrice(container), inStock: hasSoldOut ? false : undefined, image: image.startsWith('//') ? 'https:' + image : image });
           pageProducts++;
         });
@@ -684,12 +684,13 @@ class KeywordWatcher {
           } else {
             // Add to discovered items for manual review
             db.prepare(`
-              INSERT OR IGNORE INTO found_items (name, url, price, store, image_url, in_stock, is_preorder, source_type, source_id)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+              INSERT OR IGNORE INTO found_items (name, url, price, original_price, store, image_url, in_stock, is_preorder, source_type, source_id)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).run(
               product.name,
               product.url,
               product.price,
+              product.originalPrice || null,
               productStore,
               product.image,
               product.inStock === undefined ? null : (product.inStock ? 1 : 0),

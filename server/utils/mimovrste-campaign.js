@@ -83,16 +83,23 @@ async function fetchMimovrsteCampaignItems(campaignId, categoryUrlKey, userAgent
  * Map GraphQL items to internal product format
  */
 function mapGqlItemsToProducts(items, baseUrl) {
+  const missing = items.filter(p => !p.urlKey || !p.title);
+  if (missing.length > 0) {
+    console.log(`  Mimovrste: ${missing.length} items filtered out (no urlKey/title):`, missing.map(p => p.id));
+  }
+
   return items
     .filter(p => p.urlKey && p.title)
     .map(p => {
       const mv = p.mainVariant || {};
       const price = mv.price ? parseFloat(mv.price) : null;
+      const originalPrice = mv.priceRrp ? parseFloat(mv.priceRrp) : null;
       const imgId = mv.mediaIds && mv.mediaIds.length > 0 ? mv.mediaIds[0] : null;
       return {
         name: p.title,
         url: `${baseUrl}/proizvod/${p.urlKey}`,
         price: price,
+        originalPrice: (originalPrice && price && originalPrice > price) ? originalPrice : null,
         inStock: mv.availability?.status === 'A2' || mv.isAvailable === true ? true : undefined,
         image: imgId ? `https://www.mimovrste.com/i/${imgId}/240/235` : '',
       };
