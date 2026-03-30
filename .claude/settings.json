@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(curl -s -H \"Accept: text/html\" -H \"User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/91.0.4472.124 Safari/537.36\" \"https://www.mimovrste.com/kampanja/odprta-embalaza\")"
+      "Bash(curl -s -H \"Accept: text/html\" -H \"User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/91.0.4472.124 Safari/537.36\" \"https://www.mimovrste.com/kampanja/odprta-embalaza\")",
+      "Bash(node -e \":*)",
+      "WebFetch(domain:www.pikazard.eu)"
     ]
   }
 }
