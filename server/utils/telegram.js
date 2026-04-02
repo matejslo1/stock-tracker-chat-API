@@ -137,7 +137,7 @@ class TelegramService {
       const since = new Date(Date.now() - 86400000).toISOString();
       const priceDrops = [];
       for (const p of products) {
-        const history = db.prepare('SELECT price FROM stock_history WHERE product_id = ? AND created_at > ? ORDER BY created_at ASC LIMIT 1').get(p.id, since);
+        const history = db.prepare('SELECT price FROM stock_history WHERE product_id = ? AND checked_at > ? ORDER BY checked_at ASC LIMIT 1').get(p.id, since);
         if (history && p.current_price && history.price && p.current_price < history.price)
           priceDrops.push({ ...p, oldPrice: history.price });
       }

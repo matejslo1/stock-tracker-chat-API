@@ -6,6 +6,7 @@ const { detectStoreFromUrl, KNOWN_STORES } = require('./storeDetection');
 const DEFAULT_DB_PATH = path.join(__dirname, '..', 'data', 'tracker.db');
 const DB_PATH = process.env.DB_PATH || (fs.existsSync('/data') ? '/data/tracker.db' : DEFAULT_DB_PATH);
 const dataDir = path.dirname(DB_PATH);
+const TEMP_DB_PATH = DB_PATH + '.tmp';
 
 // Ensure data directory exists
 if (!fs.existsSync(dataDir)) {
@@ -15,6 +16,76 @@ if (!fs.existsSync(dataDir)) {
 let db = null;
 let isDirty = false;
 let pendingSaveTimeout = null;
+let sqlRuntime = null;
+let sqlRuntimePromise = null;
+
+function isRecoverableWasmError(error) {
+  const message = String(error?.message || error || '').toLowerCase();
+  return message.includes('memory access out of bounds');
+}
+
+async function getSqlRuntime() {
+  if (sqlRuntime) return sqlRuntime;
+  if (!sqlRuntimePromise) {
+    sqlRuntimePromise = initSqlJs().then((SQL) => {
+      sqlRuntime = SQL;
+      return SQL;
+    });
+  }
+  return sqlRuntimePromise;
+}
+
+function createEmptyDatabase(SQL) {
+  db = new SQL.Database();
+  console.log('Created new database');
+}
+
+function loadDatabaseFromFile(SQL) {
+  if (!fs.existsSync(DB_PATH)) {
+    createEmptyDatabase(SQL);
+    return;
+  }
+
+  const fileBuffer = fs.readFileSync(DB_PATH);
+  try {
+    db = new SQL.Database(fileBuffer);
+    db.run('PRAGMA journal_mode = MEMORY');
+    db.run('PRAGMA foreign_keys = ON');
+    const integrityResult = db.exec('PRAGMA integrity_check');
+    const integrityOk = integrityResult?.[0]?.values?.[0]?.[0] === 'ok';
+    if (!integrityOk) throw new Error('integrity_check failed');
+    console.log('Loaded existing database');
+  } catch (e) {
+    console.error('Database corrupted (' + e.message + '), starting fresh. Backup saved as tracker.db.bak');
+    try {
+      fs.copyFileSync(DB_PATH, DB_PATH + '.bak');
+    } catch (_) {}
+    db = new SQL.Database();
+    console.log('Created new database (recovery)');
+  }
+}
+
+function recoverDatabase(error, context) {
+  if (!isRecoverableWasmError(error) || !sqlRuntime) throw error;
+
+  console.error('Recoverable sql.js error during ' + context + ': ' + error.message);
+  try {
+    if (db) db.close();
+  } catch (_) {}
+  db = null;
+  isDirty = false;
+  loadDatabaseFromFile(sqlRuntime);
+}
+
+function withRecovery(context, operation) {
+  try {
+    return operation();
+  } catch (error) {
+    if (!isRecoverableWasmError(error)) throw error;
+    recoverDatabase(error, context);
+    return operation();
+  }
+}
 
 // Save DB to file
 function saveToFile() {
@@ -22,10 +93,14 @@ function saveToFile() {
   try {
     const data = db.export();
     const buffer = Buffer.from(data);
-    fs.writeFileSync(DB_PATH, buffer);
+    fs.writeFileSync(TEMP_DB_PATH, buffer);
+    fs.renameSync(TEMP_DB_PATH, DB_PATH);
     isDirty = false;
   } catch (e) {
     console.error('Failed to save database:', e.message);
+    try {
+      if (fs.existsSync(TEMP_DB_PATH)) fs.unlinkSync(TEMP_DB_PATH);
+    } catch (_) {}
   }
 }
 
@@ -48,32 +123,8 @@ let saveInterval = null;
 
 // Initialize database (must be called before use)
 async function initDatabase() {
-  const SQL = await initSqlJs();
-
-  // Load existing DB or create new
-  if (fs.existsSync(DB_PATH)) {
-    const fileBuffer = fs.readFileSync(DB_PATH);
-    try {
-      db = new SQL.Database(fileBuffer);
-      // Verify DB integrity before proceeding
-      db.run('PRAGMA journal_mode = MEMORY');
-      db.run('PRAGMA foreign_keys = ON');
-      const integrityResult = db.exec('PRAGMA integrity_check');
-      const integrityOk = integrityResult?.[0]?.values?.[0]?.[0] === 'ok';
-      if (!integrityOk) throw new Error('integrity_check failed');
-      console.log('📂 Loaded existing database');
-    } catch (e) {
-      console.error(`⚠️  Database corrupted (${e.message}), starting fresh. Backup saved as tracker.db.bak`);
-      try {
-        fs.copyFileSync(DB_PATH, DB_PATH + '.bak');
-      } catch (_) {}
-      db = new SQL.Database();
-      console.log('📂 Created new database (recovery)');
-    }
-  } else {
-    db = new SQL.Database();
-    console.log('📂 Created new database');
-  }
+  const SQL = await getSqlRuntime();
+  loadDatabaseFromFile(SQL);
 
   if (!db.run) throw new Error('DB not initialized');
   try { db.run('PRAGMA journal_mode = MEMORY'); } catch(_) {}
@@ -486,50 +537,62 @@ const dbProxy = {
     return {
       run(...params) {
         if (!db) throw new Error('Database not initialized. Call initDatabase() first.');
-        // sql.js needs params as an array, flatten if needed
-        const flatParams = params.length === 1 && Array.isArray(params[0]) ? params[0] : params;
-        db.run(sql, flatParams);
-        scheduleSave();
-        const result = db.exec('SELECT last_insert_rowid() as lid');
-        return {
-          lastInsertRowid: result.length > 0 ? Number(result[0].values[0][0]) : null,
-          changes: db.getRowsModified()
-        };
+        return withRecovery(`run: ${sql}`, () => {
+          const flatParams = params.length === 1 && Array.isArray(params[0]) ? params[0] : params;
+          db.run(sql, flatParams);
+          scheduleSave();
+          const result = db.exec('SELECT last_insert_rowid() as lid');
+          return {
+            lastInsertRowid: result.length > 0 ? Number(result[0].values[0][0]) : null,
+            changes: db.getRowsModified()
+          };
+        });
       },
       get(...params) {
         if (!db) throw new Error('Database not initialized. Call initDatabase() first.');
-        const flatParams = params.length === 1 && Array.isArray(params[0]) ? params[0] : params;
-        // Convert all params to proper types for sql.js binding
-        const safeParams = flatParams.map(p => p === undefined ? null : (typeof p === 'bigint' ? Number(p) : p));
-        const stmt = db.prepare(sql);
-        if (safeParams.length > 0) stmt.bind(safeParams);
-        let row = undefined;
-        if (stmt.step()) {
-          row = stmt.getAsObject();
-        }
-        stmt.free();
-        return row;
+        return withRecovery(`get: ${sql}`, () => {
+          const flatParams = params.length === 1 && Array.isArray(params[0]) ? params[0] : params;
+          const safeParams = flatParams.map(p => p === undefined ? null : (typeof p === 'bigint' ? Number(p) : p));
+          const stmt = db.prepare(sql);
+          try {
+            if (safeParams.length > 0) stmt.bind(safeParams);
+            let row = undefined;
+            if (stmt.step()) {
+              row = stmt.getAsObject();
+            }
+            return row;
+          } finally {
+            stmt.free();
+          }
+        });
       },
       all(...params) {
         if (!db) throw new Error('Database not initialized. Call initDatabase() first.');
-        const flatParams = params.length === 1 && Array.isArray(params[0]) ? params[0] : params;
-        const safeParams = flatParams.map(p => p === undefined ? null : (typeof p === 'bigint' ? Number(p) : p));
-        const results = [];
-        const stmt = db.prepare(sql);
-        if (safeParams.length > 0) stmt.bind(safeParams);
-        while (stmt.step()) {
-          results.push(stmt.getAsObject());
-        }
-        stmt.free();
-        return results;
+        return withRecovery(`all: ${sql}`, () => {
+          const flatParams = params.length === 1 && Array.isArray(params[0]) ? params[0] : params;
+          const safeParams = flatParams.map(p => p === undefined ? null : (typeof p === 'bigint' ? Number(p) : p));
+          const results = [];
+          const stmt = db.prepare(sql);
+          try {
+            if (safeParams.length > 0) stmt.bind(safeParams);
+            while (stmt.step()) {
+              results.push(stmt.getAsObject());
+            }
+            return results;
+          } finally {
+            stmt.free();
+          }
+        });
       }
     };
   },
 
   exec(sql) {
     if (!db) throw new Error('Database not initialized. Call initDatabase() first.');
-    db.run(sql);
-    scheduleSave();
+    return withRecovery(`exec: ${sql}`, () => {
+      db.run(sql);
+      scheduleSave();
+    });
   },
 
   pragma() {
