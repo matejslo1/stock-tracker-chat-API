@@ -110,6 +110,7 @@ class TelegramService {
     this._dailyReportJob = setInterval(async () => {
       try {
         const db = require('./database');
+        if (!db.isInitialized()) return;
         const enabled = db.prepare("SELECT value FROM app_settings WHERE key = 'daily_report_enabled'").get();
         if (!enabled || enabled.value !== 'true') return;
         const timeRow = db.prepare("SELECT value FROM app_settings WHERE key = 'daily_report_time'").get();

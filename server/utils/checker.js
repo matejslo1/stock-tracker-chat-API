@@ -58,6 +58,11 @@ class StockChecker {
   }
 
   async checkAll(forceProductId = null, { force = false } = {}) {
+    if (!db.isInitialized()) {
+      console.log('⏳ Database not ready yet, skipping stock check...');
+      return;
+    }
+
     if (this.isChecking) {
       if (forceProductId) {
         const product = db.prepare('SELECT * FROM products WHERE id = ?').get(forceProductId);
@@ -117,6 +122,11 @@ class StockChecker {
   }
 
   async checkProductsByIds(ids, { forceNotify = true } = {}) {
+    if (!db.isInitialized()) {
+      console.log('⏳ Database not ready yet, skipping filtered stock check...');
+      return { started: false, dbReady: false };
+    }
+
     const uniqueIds = [...new Set(
       (Array.isArray(ids) ? ids : [])
         .map(id => parseInt(id, 10))
@@ -158,6 +168,11 @@ class StockChecker {
   }
 
   async checkSingleProduct(productOrId, { forceNotify = false } = {}) {
+    if (!db.isInitialized()) {
+      console.log('⏳ Database not ready yet, skipping single-product stock check...');
+      return { started: false, dbReady: false };
+    }
+
     const product = typeof productOrId === 'object' && productOrId
       ? productOrId
       : db.prepare('SELECT * FROM products WHERE id = ?').get(productOrId);

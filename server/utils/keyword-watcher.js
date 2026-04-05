@@ -746,6 +746,10 @@ class KeywordWatcher {
   }
 
   async checkAll() {
+    if (!db.isInitialized()) {
+      console.log('⏳ Database not ready yet, skipping keyword watch check...');
+      return;
+    }
     if (this.isChecking) { console.log('⏳ Already in progress...'); return; }
     this.isChecking = true;
     const allWatches = db.prepare('SELECT * FROM keyword_watches WHERE active = 1').all();

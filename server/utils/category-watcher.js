@@ -495,6 +495,10 @@ class CategoryWatcher {
   }
 
   async checkAll() {
+    if (!db.isInitialized()) {
+      console.log('⏳ Database not ready yet, skipping category watch check...');
+      return;
+    }
     if (this.isChecking) return;
     this.isChecking = true;
     try {

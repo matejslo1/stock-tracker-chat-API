@@ -18,6 +18,7 @@ let isDirty = false;
 let pendingSaveTimeout = null;
 let sqlRuntime = null;
 let sqlRuntimePromise = null;
+let initPromise = null;
 
 function isRecoverableWasmError(error) {
   const message = String(error?.message || error || '').toLowerCase();
@@ -123,12 +124,16 @@ let saveInterval = null;
 
 // Initialize database (must be called before use)
 async function initDatabase() {
-  const SQL = await getSqlRuntime();
-  loadDatabaseFromFile(SQL);
+  if (db) return db;
+  if (initPromise) return initPromise;
 
-  if (!db.run) throw new Error('DB not initialized');
-  try { db.run('PRAGMA journal_mode = MEMORY'); } catch(_) {}
-  try { db.run('PRAGMA foreign_keys = ON'); } catch(_) {}
+  initPromise = (async () => {
+    const SQL = await getSqlRuntime();
+    loadDatabaseFromFile(SQL);
+
+    if (!db.run) throw new Error('DB not initialized');
+    try { db.run('PRAGMA journal_mode = MEMORY'); } catch(_) {}
+    try { db.run('PRAGMA foreign_keys = ON'); } catch(_) {}
 
   // Create tables
   db.run(`
@@ -521,10 +526,19 @@ async function initDatabase() {
 
   saveToFile();
   const periodicMs = parseInt(process.env.SAVE_INTERVAL_MS || '60000', 10);
+  if (saveInterval) clearInterval(saveInterval);
   saveInterval = setInterval(() => { if (isDirty) saveToFile(); }, periodicMs);
 
   console.log('✅ Database initialized');
   return db;
+  })();
+
+  try {
+    return await initPromise;
+  } catch (error) {
+    initPromise = null;
+    throw error;
+  }
 }
 
 // ============================================================
@@ -605,8 +619,10 @@ const dbProxy = {
     if (isDirty) saveToFile();
     if (db) db.close();
     db = null;
+    initPromise = null;
   }
 };
 
 module.exports = dbProxy;
 module.exports.initDatabase = initDatabase;
+module.exports.isInitialized = () => db !== null;
