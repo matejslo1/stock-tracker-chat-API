@@ -158,7 +158,7 @@ class GenericScraper {
       console.log(`  🎯 Selectors: inStock=${selectorResult.inStock}, rawText="${selectorResult.rawStockText}"`);
 
       const finalIsPreorder = isPreorder || shoptetResult.isPreorder;
-      const hasAuthoritativeOutOfStock = shopifyResult.inStock === false || jsonLdResult.inStock === false;
+      const hasAuthoritativeOutOfStock = shopifyResult.inStock === false || jsonLdResult.inStock === false || shoptetResult.inStock === false;
 
       // Merge priority: if ANY method says IN STOCK -> in stock
       // product.js false can be wrong (inventory_policy:continue), so HTML/JSON-LD can override
@@ -481,8 +481,8 @@ class GenericScraper {
     if (availabilityText) {
       result.rawStockText = availabilityText;
       if (this.detectPreorderText(storeMeta.preorder_terms || [], availabilityText)) result.isPreorder = true;
-      if (/vypredan|nie je skladom|nedostupn|na objednavku|na objednávku/.test(availabilityText)) result.inStock = false;
-      else if (/skladom|na sklade|\(\s*\d+\s*ks\)/.test(availabilityText)) result.inStock = true;
+      if (/vypredan|nie je skladom|nedostupn|na objednavku|na objednávku|out of stock|sold out|not available|unavailable/.test(availabilityText)) result.inStock = false;
+      else if (/skladom|na sklade|\(\s*\d+\s*ks\)|in stock|available/.test(availabilityText)) result.inStock = true;
     }
 
     const priceText = [
@@ -496,9 +496,11 @@ class GenericScraper {
     const addToCartText = $('.add-to-cart-button, button[name="submit"], .btn-cart, .btn.btn-cart').first().text().replace(/\s+/g, ' ').trim().toLowerCase();
     if (result.inStock === null && addToCartText) {
       if (this.detectPreorderText(storeMeta.preorder_terms || [], addToCartText)) result.isPreorder = true;
-      if (addToCartText.includes('do košíka') || addToCartText.includes('pridať do košíka')) result.inStock = true;
-      if (addToCartText.includes('vypredané') || addToCartText.includes('nedostupné')) result.inStock = false;
+      if (addToCartText.includes('do košíka') || addToCartText.includes('pridať do košíka') || addToCartText.includes('add to cart') || addToCartText.includes('v košík') || addToCartText.includes('v košíček')) result.inStock = true;
+      if (addToCartText.includes('vypredané') || addToCartText.includes('nedostupné') || addToCartText.includes('out of stock') || addToCartText.includes('sold out') || addToCartText.includes('unavailable')) result.inStock = false;
     }
+    // Pre-order button counts as out of stock (waiting for restock)
+    if (result.isPreorder && result.inStock === null) result.inStock = false;
 
     const ogImage = $('meta[property="og:image"]').attr('content');
     if (ogImage) {
