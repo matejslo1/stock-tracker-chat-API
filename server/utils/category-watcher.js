@@ -149,6 +149,20 @@ class CategoryWatcher {
     return false;
   }
 
+  hasStrongProductSlug(href) {
+    try {
+      const path = new URL(String(href || ''), 'https://example.com').pathname.toLowerCase();
+      const segments = path.split('/').filter(Boolean);
+      if (segments.length === 0) return false;
+      const localeSet = new Set(['en', 'sk', 'cs', 'de', 'sl', 'hr']);
+      const slug = localeSet.has(segments[0]) ? (segments[1] || '') : segments[0];
+      if (!slug) return false;
+      return /[a-z0-9].*-[a-z0-9]/.test(slug);
+    } catch (e) {
+      return false;
+    }
+  }
+
   extractPrice(container) {
     const priceEl = container.find('.price-final,.price-final-holder .price-final,.price-item,.money,.price,.product-price,[itemprop="price"]').first();
     return this.parsePrice(priceEl.text());
@@ -214,7 +228,9 @@ class CategoryWatcher {
       const containerText = container.text().replace(/\s+/g, ' ').trim();
       if (!containerText) return false;
       const hasCatalogSignals = container.find('.price, .money, .availability, .add-to-cart-button, .product-name, h2, h3, [itemprop="price"]').length > 0;
-      if (!likelyPriceText(containerText) && !likelyAvailabilityText(containerText) && !hasCatalogSignals) return false;
+      const hasImageSignal = container.find('img, picture source').length > 0 || $(linkEl).find('img').length > 0;
+      const hasStrongSlug = this.hasStrongProductSlug(href);
+      if (!likelyPriceText(containerText) && !likelyAvailabilityText(containerText) && !hasCatalogSignals && !(hasStrongSlug && hasImageSignal)) return false;
 
       const name = $(linkEl).attr('title')
         || $(linkEl).text().trim().replace(/\s+/g, ' ')
@@ -343,7 +359,7 @@ class CategoryWatcher {
     };
 
     let currentUrl = categoryUrl;
-    let pagesLeft = 10;
+    let pagesLeft = 30;
     while (currentUrl && pagesLeft-- > 0) {
       const { nextUrl } = await scrapePage(currentUrl);
       if (!nextUrl || nextUrl === currentUrl) break;
