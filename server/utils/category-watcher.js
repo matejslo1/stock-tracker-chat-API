@@ -473,7 +473,15 @@ class CategoryWatcher {
             product.image
           );
           const inserted = db.prepare('SELECT * FROM products WHERE id = ?').get(ins.lastInsertRowid);
-          if (inserted) toCheck.push(inserted);
+          if (inserted) {
+            // If already in stock from category scan, suppress first stock alert
+            // (category alert already notified — checker would double-notify)
+            if (product.inStock === true && watch.notify_new_products) {
+              db.prepare('INSERT INTO notifications (product_id, type, message) VALUES (?, ?, ?)')
+                .run(inserted.id, 'stock_alert', 'Suppressed: notified via category alert');
+            }
+            toCheck.push(inserted);
+          }
           console.log(`    ➕ Auto-added: ${product.name}`);
         } else {
           // Add to discovered items for manual review

@@ -39,7 +39,7 @@ class GenericScraper {
   detectPreorderText(extraTerms = [], ...parts) {
     const text = parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim().toLowerCase();
     if (!text) return false;
-    const terms = ['prednarud', 'predobjed', 'prednaroc', 'preorder', 'pre-order', ...extraTerms.map(t => String(t).toLowerCase())];
+    const terms = ['prednarud', 'predobjed', 'prednaroc', 'prednaroč', 'preorder', 'pre-order', ...extraTerms.map(t => String(t).toLowerCase())];
     return terms.some(token => text.includes(token));
   }
 
