@@ -60,6 +60,53 @@ class CategoryWatcher {
     }
   }
 
+  canonicalizeProductUrl(rawUrl) {
+    try {
+      const url = new URL(String(rawUrl || ''));
+      url.hash = '';
+      url.search = '';
+      url.protocol = url.protocol.toLowerCase();
+      url.hostname = url.hostname.toLowerCase();
+      let p = url.pathname || '/';
+      p = p.replace(/\/{2,}/g, '/');
+      if (p.length > 1 && p.endsWith('/')) p = p.slice(0, -1);
+      url.pathname = p;
+      return url.toString();
+    } catch (e) {
+      return String(rawUrl || '');
+    }
+  }
+
+  chunkArray(items, size = 5) {
+    const out = [];
+    for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+    return out;
+  }
+
+  truncateForAlert(text, max = 140) {
+    const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+    if (normalized.length <= max) return normalized;
+    return `${normalized.slice(0, max - 3)}...`;
+  }
+
+  normalizeAlertUrl(raw) {
+    try {
+      const u = new URL(String(raw || ''));
+      // Telegram Markdown link parser is sensitive to naked parentheses in URLs.
+      return u.toString().replace(/\(/g, '%28').replace(/\)/g, '%29');
+    } catch (e) {
+      return String(raw || '');
+    }
+  }
+
+  prepareAlertProducts(products) {
+    return (Array.isArray(products) ? products : []).map((p) => ({
+      ...p,
+      name: this.truncateForAlert(p?.name || ''),
+      url: this.normalizeAlertUrl(p?.url || ''),
+    }));
+  }
+
   parsePrice(text) {
     if (!text) return null;
     let cleaned = String(text).replace(/[€$£¥₹]/g, '').replace(/\s/g, '').replace(/&nbsp;/g, '').trim();
@@ -439,6 +486,7 @@ class CategoryWatcher {
 
     let knownUrls = [];
     try { knownUrls = JSON.parse(watch.known_product_urls || '[]'); } catch (e) {}
+    const knownUrlSet = new Set((Array.isArray(knownUrls) ? knownUrls : []).map((u) => this.canonicalizeProductUrl(u)).filter(Boolean));
 
     const minPrice = watch.min_price ? parseFloat(watch.min_price) : null;
     const maxPrice = watch.max_price ? parseFloat(watch.max_price) : null;
@@ -446,18 +494,32 @@ class CategoryWatcher {
     const includeList = watch.include_keywords ? watch.include_keywords.split(',').map(k => this.normalizeText(k.trim())).filter(k => k) : [];
     const excludeList = watch.exclude_keywords ? watch.exclude_keywords.split(',').map(k => this.normalizeText(k.trim())).filter(k => k) : [];
 
-    const filteredProducts = foundProducts.filter((product) => {
+    const filteredProductsRaw = foundProducts.filter((product) => {
       // 1. Price filters
       if (minPrice !== null && product.price !== null && product.price !== undefined && product.price < minPrice) return false;
       if (maxPrice !== null && product.price !== null && product.price !== undefined && product.price > maxPrice) return false;
 
       return this.matchesKeywordFilters(product, includeList, excludeList);
     });
-    const newProducts = filteredProducts.filter(product => !knownUrls.includes(product.url));
+    const byCanonicalUrl = new Map();
+    for (const product of filteredProductsRaw) {
+      const canonicalUrl = this.canonicalizeProductUrl(product.url);
+      if (!canonicalUrl) continue;
+      if (byCanonicalUrl.has(canonicalUrl)) continue;
+      byCanonicalUrl.set(canonicalUrl, { ...product, url: canonicalUrl });
+    }
+    const filteredProducts = [...byCanonicalUrl.values()];
+    const discoveredRows = db.prepare('SELECT url FROM found_items WHERE source_type = ? AND source_id = ?').all('category', watch.id);
+    const discoveredUrlSet = new Set((Array.isArray(discoveredRows) ? discoveredRows : []).map((r) => this.canonicalizeProductUrl(r?.url)).filter(Boolean));
+    const newProducts = filteredProducts.filter(product => !knownUrlSet.has(product.url) && !discoveredUrlSet.has(product.url));
 
     if (newProducts.length > 0 && (watch.notify_new_products || !watch.auto_add_tracking)) {
       if (watch.notify_new_products) {
-        await telegram.sendCategoryAlert(watch, newProducts);
+        const alertProducts = this.prepareAlertProducts(newProducts);
+        const chunks = this.chunkArray(alertProducts, 5);
+        for (const chunk of chunks) {
+          await telegram.sendCategoryAlert(watch, chunk);
+        }
       }
       await this.autoAddProducts(watch, newProducts);
       db.prepare('INSERT INTO notifications (product_id, type, message) VALUES (?, ?, ?)')
@@ -475,7 +537,11 @@ class CategoryWatcher {
         }
       }
       if (backInStock.length > 0) {
-        await telegram.sendCategoryStockChangeAlert(watch, backInStock);
+        const alertProducts = this.prepareAlertProducts(backInStock);
+        const chunks = this.chunkArray(alertProducts, 5);
+        for (const chunk of chunks) {
+          await telegram.sendCategoryStockChangeAlert(watch, chunk);
+        }
         db.prepare('INSERT INTO notifications (product_id, type, message) VALUES (?, ?, ?)')
           .run(null, 'category_watch', `${backInStock.length} products back in stock in "${watch.category_name || watch.category_url}"`);
       }
@@ -488,8 +554,9 @@ class CategoryWatcher {
         .run(product.inStock ? 1 : 0, product.url, 'category', watch.id);
     }
 
+    for (const product of filteredProducts) knownUrlSet.add(product.url);
     db.prepare(`UPDATE category_watches SET known_product_urls=?, last_checked=datetime('now'), last_found_count=?, updated_at=datetime('now') WHERE id=?`)
-      .run(JSON.stringify(filteredProducts.map(product => product.url)), filteredProducts.length, watch.id);
+      .run(JSON.stringify([...knownUrlSet]), filteredProducts.length, watch.id);
 
     return { total: filteredProducts.length, new: newProducts.length };
   }

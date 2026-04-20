@@ -472,7 +472,7 @@ app.put("/api/keyword-watches/:id", async (req, res) => {
     db.prepare(
       `UPDATE keyword_watches SET keyword=?, store_url=?, store_name=?, search_url=?, notify_new_products=?, notify_in_stock=?, auto_add_tracking=?, check_interval_minutes=?, min_price=?, max_price=?, include_keywords=?, exclude_keywords=?, updated_at=datetime('now') WHERE id=?`
     ).run(keyword, normalizedStoreUrl, storeName, normalizedSearchUrl,
-      notify_new_products ? 1 : 0, notify_in_stock ? 1 : 0, auto_add_tracking ? 1 : 0,
+      notify_new_products !== false ? 1 : 0, notify_in_stock !== false ? 1 : 0, auto_add_tracking ? 1 : 0,
       parseInt(check_interval_minutes) || 0,
       min_price ? parseFloat(min_price) : null,
       max_price ? parseFloat(max_price) : null,
@@ -586,8 +586,8 @@ app.put("/api/category-watches/:id", async (req, res) => {
       normalizedCategoryUrl,
       storeUrl,
       storeName,
-      notify_new_products ? 1 : 0,
-      notify_stock_changes ? 1 : 0,
+      notify_new_products !== false ? 1 : 0,
+      notify_stock_changes !== false ? 1 : 0,
       auto_add_tracking ? 1 : 0,
       parseInt(check_interval_minutes, 10) || 0,
       min_price ? parseFloat(min_price) : null,

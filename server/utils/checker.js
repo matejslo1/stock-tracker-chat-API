@@ -286,11 +286,18 @@ class StockChecker {
     db.prepare('INSERT INTO stock_history (product_id, in_stock, price) VALUES (?, ?, ?)')
       .run(product.id, isNowInStock ? 1 : 0, newPrice);
 
+    const hasExistingStockAlert = !!db.prepare(
+      'SELECT id FROM notifications WHERE product_id = ? AND type = ? LIMIT 1'
+    ).get(product.id, 'stock_alert');
+
     // Stock came back (or force-check while in stock)
     if (isNowInStock && (!wasInStock || forceNotify)) {
       console.log(`  🚨 BACK IN STOCK: ${product.name}!`);
 
       if (product.notify_on_stock) {
+        if (hasExistingStockAlert) {
+          console.log(`  ℹ️  Stock alert already sent before, skipping duplicate for: ${product.name}`);
+        } else {
         const updatedProduct = {
           ...product,
           store: effectiveStore,
@@ -333,6 +340,7 @@ class StockChecker {
 
         db.prepare('INSERT INTO notifications (product_id, type, message) VALUES (?, ?, ?)')
           .run(product.id, 'stock_alert', `Product back in stock! Price: ${newPrice || 'N/A'}`);
+        }
       }
 
       if (product.auto_purchase && process.env.AUTO_PURCHASE_ENABLED === 'true' && product.store !== 'shopify') {

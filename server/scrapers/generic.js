@@ -7,6 +7,8 @@ const { detectStoreFromUrl } = require('../utils/storeDetection');
 class GenericScraper {
   constructor() {
     this.browser = null;
+    this.puppeteerUnavailable = false;
+    this.puppeteerWarned = false;
     this.userAgents = [
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
@@ -42,6 +44,7 @@ class GenericScraper {
   }
 
   async getBrowser() {
+    if (this.puppeteerUnavailable) return null;
     if (!this.browser) {
       try {
         const puppeteer = require('puppeteer');
@@ -50,7 +53,11 @@ class GenericScraper {
           args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu','--window-size=1920,1080']
         });
       } catch (e) {
-        console.warn('Puppeteer not available - using Cheerio only mode');
+        this.puppeteerUnavailable = true;
+        if (!this.puppeteerWarned) {
+          this.puppeteerWarned = true;
+          console.warn('Puppeteer not available - using Cheerio-only fallback for all stores');
+        }
         return null;
       }
     }
@@ -626,10 +633,19 @@ class GenericScraper {
       } catch (e) { /* ignore */ }
     }
 
-    if (!mergedConfig.requires_puppeteer) {
-      const result = await this.scrapeWithCheerio(url, mergedConfig);
-      if (result) return result;
+    const requiresPuppeteer = Number(mergedConfig.requires_puppeteer) === 1;
+
+    // For "requires_puppeteer" stores, try browser-first, but NEVER fail hard if browser
+    // is unavailable in production runtime (e.g. Railway).
+    if (requiresPuppeteer) {
+      const browserResult = await this.scrapeWithPuppeteer(url, mergedConfig);
+      if (browserResult) return browserResult;
+      return await this.scrapeWithCheerio(url, mergedConfig);
     }
+
+    // Default path for non-browser stores.
+    const cheerioResult = await this.scrapeWithCheerio(url, mergedConfig);
+    if (cheerioResult) return cheerioResult;
     return await this.scrapeWithPuppeteer(url, mergedConfig);
   }
 
