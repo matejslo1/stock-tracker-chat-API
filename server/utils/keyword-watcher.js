@@ -683,7 +683,15 @@ class KeywordWatcher {
             );
             console.log(`    ➕ Auto-added: ${product.name}`);
             const newP = db.prepare('SELECT * FROM products WHERE id = ?').get(ins.lastInsertRowid);
-            if (newP) toCheck.push(newP);
+            if (newP) {
+              // If already in stock from search results, suppress first stock alert
+              // (keyword alert already notified — checker would double-notify)
+              if (product.inStock === true && watch.notify_new_products) {
+                db.prepare('INSERT INTO notifications (product_id, type, message) VALUES (?, ?, ?)')
+                  .run(newP.id, 'stock_alert', 'Suppressed: notified via keyword alert');
+              }
+              toCheck.push(newP);
+            }
           } else {
             // Add to discovered items for manual review
             db.prepare(`
@@ -739,8 +747,16 @@ class KeywordWatcher {
     const discoveredUrls = db.prepare("SELECT url FROM found_items WHERE source_type = 'keyword' AND source_id = ?").all(watch.id).map(p => p.url);
     const allKnownUrls = [...new Set([...filteredProducts.map(p => p.url), ...trackedUrls, ...discoveredUrls])];
 
+    // Trim knownStockMap: only keep URLs still in allKnownUrls to prevent unbounded growth
+    const trimmedStockMap = {};
+    for (const url of allKnownUrls) {
+      if (knownStockMap[url] !== undefined) trimmedStockMap[url] = knownStockMap[url];
+    }
+    // Cap allKnownUrls at 2000 entries (keep most recent)
+    const cappedKnownUrls = allKnownUrls.slice(-2000);
+
     db.prepare(`UPDATE keyword_watches SET known_product_urls=?, known_stock_map=?, last_checked=datetime('now'), last_found_count=?, updated_at=datetime('now') WHERE id=?`)
-      .run(JSON.stringify(allKnownUrls), JSON.stringify(knownStockMap), filteredProducts.length, watch.id);
+      .run(JSON.stringify(cappedKnownUrls), JSON.stringify(trimmedStockMap), filteredProducts.length, watch.id);
 
     return { total: foundProducts.length, new: newProducts.length };
   }

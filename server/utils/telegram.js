@@ -555,6 +555,24 @@ class TelegramService {
     } catch (error) { console.error('Failed to send cart alert:', error.message); return false; }
   }
 
+  async sendPreorderAlert(product) {
+    if (!this.initialized || !this.chatId) return false;
+    if (this._isPaused() || this._isQuietHours()) return false;
+    const price = product.current_price ? `${product.current_price.toFixed(2)} ${product.currency || 'EUR'}` : 'N/A';
+    const message =
+      '⏳ *PREDNAROČILO RAZPOLOŽLJIVO!*\n\n' +
+      `📦 *${product.name}*\n🏪 Trgovina: ${product.store}\n💰 Cena: *${price}*\n\n` +
+      `_Izdelek je zdaj na prednaročilu — prišli boste med prvimi ko bo na zalogi._`;
+    try {
+      await this.bot.sendMessage(this.chatId, message, {
+        parse_mode: 'Markdown',
+        disable_web_page_preview: true,
+        reply_markup: { inline_keyboard: [[{ text: '🔗 Prednaroči', url: product.url }, { text: '🔄 Preveri zdaj', callback_data: `check_now_${product.id}` }]] }
+      });
+      return true;
+    } catch (error) { console.error('Failed to send preorder alert:', error.message); return false; }
+  }
+
   async sendPriceDropAlert(product, oldPrice, newPrice) {
     if (!this.initialized || !this.chatId) return false;
     if (this._isPaused() || this._isQuietHours()) return false;

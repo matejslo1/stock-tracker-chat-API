@@ -224,6 +224,7 @@ class StockChecker {
     }
 
     const wasInStock = product.in_stock === 1;
+    const wasPreorder = product.is_preorder === 1;
     const isNowInStock = result.inStock;
     const isNowPreorder = result.isPreorder === true;
     const oldPrice = product.current_price;
@@ -289,6 +290,15 @@ class StockChecker {
     const hasExistingStockAlert = !!db.prepare(
       'SELECT id FROM notifications WHERE product_id = ? AND type = ? LIMIT 1'
     ).get(product.id, 'stock_alert');
+
+    // Preorder became available (was not preorder and not in stock before)
+    if (isNowPreorder && !wasPreorder && !wasInStock && !isNowInStock && product.notify_on_stock) {
+      console.log(`  ⏳ NOW PREORDER: ${product.name}`);
+      const updatedProduct = { ...product, store: effectiveStore, current_price: newPrice };
+      await telegram.sendPreorderAlert(updatedProduct);
+      db.prepare('INSERT INTO notifications (product_id, type, message) VALUES (?, ?, ?)')
+        .run(product.id, 'preorder_alert', `Preorder available! Price: ${newPrice || 'N/A'}`);
+    }
 
     // Stock came back (or force-check while in stock)
     if (isNowInStock && (!wasInStock || forceNotify)) {
