@@ -2203,7 +2203,7 @@ export default function StockTracker() {
         {activeTab === "keywords" && (
           <div className="pb-8">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-gray-500">Uporabi keyword watch za iskanje po besedah ali category watch za cele collection strani</p>
+              <p className="text-sm text-gray-500">Uporabi spremljanje po ključnih besedah ali spremljanje kategorij (collection strani)</p>
               <div className="flex items-center gap-2">
                 <button onClick={() => setShowCategoryModal(true)}
                   className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl text-sm font-bold text-gray-700 transition-colors">
@@ -2211,7 +2211,7 @@ export default function StockTracker() {
                 </button>
                 <button onClick={() => setShowKeywordModal(true)}
                   className="flex items-center gap-2 px-4 py-2.5 bg-gray-900 hover:bg-gray-800 rounded-xl text-sm font-bold text-white transition-colors">
-                  <Plus size={16} /> Novo iskanje
+                  <Plus size={16} /> Nova ključna beseda
                 </button>
               </div>
             </div>
@@ -2219,15 +2219,15 @@ export default function StockTracker() {
             {keywordWatches.length === 0 && categoryWatches.length === 0 ? (
               <div className="text-center py-16 text-gray-400">
                 <Search size={40} className="mx-auto mb-3 opacity-40" />
-                <p className="font-medium">Ni aktivnih watchov</p>
-                <p className="text-sm mt-1">Dodaj keyword ali category watch za spremljanje novih izdelkov</p>
+                <p className="font-medium">Ni aktivnih spremljanj</p>
+                <p className="text-sm mt-1">Dodaj spremljanje po ključni besedi ali kategoriji za nove izdelke</p>
               </div>
             ) : (
               <div className="space-y-6">
                 <div>
                   <div className="flex items-center gap-2 mb-3">
                     <Link size={16} className="text-gray-500" />
-                    <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Category Watches</h3>
+                    <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Spremljanje kategorij</h3>
                   </div>
                   {categoryWatches.length === 0 ? (
                     <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-6 text-sm text-gray-400">
@@ -2249,7 +2249,7 @@ export default function StockTracker() {
                                 </span>
                                 {w.auto_add_tracking === 1 && (
                                   <span className="text-xs bg-orange-100 text-orange-700 border border-orange-200 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
-                                    <Zap size={10} /> Auto-track
+                                    <Zap size={10} /> Samodejno sledenje
                                   </span>
                                 )}
                               </div>
@@ -2304,11 +2304,11 @@ export default function StockTracker() {
                 <div>
                   <div className="flex items-center gap-2 mb-3">
                     <Search size={16} className="text-gray-500" />
-                    <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Keyword Watches</h3>
+                    <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Spremljanje ključnih besed</h3>
                   </div>
                   {keywordWatches.length === 0 ? (
                     <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-6 text-sm text-gray-400">
-                      Ni dodanih keyword iskanj.
+                      Ni dodanih spremljanj po ključnih besedah.
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -2323,12 +2323,12 @@ export default function StockTracker() {
                                 </span>
                                 {w.notify_in_stock === 1 && (
                                   <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
-                                    <Bell size={10} /> Zaloga
+                                    <Bell size={10} /> Obvestilo o zalogi
                                   </span>
                                 )}
                                 {w.auto_add_tracking === 1 && (
                                   <span className="text-xs bg-orange-100 text-orange-700 border border-orange-200 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
-                                    <Zap size={10} /> Auto-track
+                                    <Zap size={10} /> Samodejno sledenje
                                   </span>
                                 )}
                                 {!w.active && <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Neaktivno</span>}
