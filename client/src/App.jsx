@@ -2207,11 +2207,11 @@ export default function StockTracker() {
               <div className="flex items-center gap-2">
                 <button onClick={() => setShowCategoryModal(true)}
                   className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl text-sm font-bold text-gray-700 transition-colors">
-                  <Link size={16} /> Nova kategorija
+                  <Link size={16} /> Dodaj kategorijo
                 </button>
                 <button onClick={() => setShowKeywordModal(true)}
                   className="flex items-center gap-2 px-4 py-2.5 bg-gray-900 hover:bg-gray-800 rounded-xl text-sm font-bold text-white transition-colors">
-                  <Plus size={16} /> Nova ključna beseda
+                  <Plus size={16} /> Dodaj ključno besedo
                 </button>
               </div>
             </div>
