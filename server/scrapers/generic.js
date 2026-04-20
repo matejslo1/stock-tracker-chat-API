@@ -163,10 +163,13 @@ class GenericScraper {
       // Merge priority: if ANY method says IN STOCK -> in stock
       // product.js false can be wrong (inventory_policy:continue), so HTML/JSON-LD can override
       // BUT preorder items with authoritative false should stay out of stock.
+      // Shoptet availability text is authoritative: if it explicitly says out of stock,
+      // don't let CSS selectors (e.g. generic "Add to cart" button) override it.
       const finalInStock =
         finalIsPreorder && hasAuthoritativeOutOfStock ? false :
         shopifyResult.inStock === true ? true :          // product.js says yes -> trust it
         jsonLdResult.inStock === true ? true :           // JSON-LD says yes -> trust it
+        shoptetResult.inStock === false ? false :        // Shoptet availability says no -> trust it over selectors
         shoptetResult.inStock === true ? true :          // Shoptet availability says yes -> trust it
         selectorResult.inStock === true ? true :         // HTML selector says yes -> trust it
         shopifyResult.inStock === false && jsonLdResult.inStock === null && shoptetResult.inStock === null && selectorResult.inStock === null ? false : // only product.js voted, said no
