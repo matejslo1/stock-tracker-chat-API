@@ -658,6 +658,21 @@ class TelegramService {
     catch (error) { console.error('Failed to send message:', error.message); return false; }
   }
 
+  async sendTestMessage(text) {
+    const payload = String(text || 'Test message');
+    if (!this.initialized) return { success: false, reason: 'not_initialized' };
+    if (!this.chatId) return { success: false, reason: 'missing_chat_id' };
+    if (!this.bot) return { success: false, reason: 'bot_not_ready' };
+    try {
+      // Intentionally bypass quiet-hours/pause so "Test" verifies raw Telegram connectivity.
+      await this.bot.sendMessage(this.chatId, payload, { disable_web_page_preview: true });
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to send test message:', error.message);
+      return { success: false, reason: error.message };
+    }
+  }
+
   onManualCheckHandler(callback) { this.onManualCheck = callback; }
   getChatId() { return this.chatId; }
   getToken() { return this.currentToken || process.env.TELEGRAM_BOT_TOKEN || ''; }

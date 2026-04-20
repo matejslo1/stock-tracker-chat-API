@@ -391,8 +391,14 @@ app.post("/api/telegram/settings", async (req, res) => {
 
 app.post("/api/telegram/test", async (req, res) => {
   try {
-    const sent = await telegram.sendMessage("🧪 Test iz Stock Trackerja — vse deluje!");
-    res.json({ success: sent });
+    const result = await telegram.sendTestMessage(`Test iz Stock Trackerja: ${new Date().toISOString()}`);
+    res.json({
+      ...result,
+      connected: telegram.isReady(),
+      paused: telegram.isPaused(),
+      quietHours: telegram.isQuietHours(),
+      chatId: telegram.getChatId() || null,
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
