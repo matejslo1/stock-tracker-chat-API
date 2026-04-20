@@ -123,7 +123,30 @@ class CategoryWatcher {
     if (lowerHref.includes('/products/')) return true;
     if (lowerHref.includes('/collections/') || lowerHref.includes('/search') || lowerHref.includes('/vyhladavanie/') || lowerHref.includes('/vyhledavani/')) return false;
     if (lowerHref.includes('/znacka/') || lowerHref.includes('/tag/') || lowerHref.includes('/blog/') || lowerHref.includes('/cart')) return false;
-    return /^\/[^/]+\/?$/.test(lowerHref) || /^https?:\/\/[^/]+\/[^/]+\/?$/.test(lowerHref);
+
+    let path = lowerHref;
+    try {
+      path = new URL(lowerHref, 'https://example.com').pathname.toLowerCase();
+    } catch (e) {}
+    const segments = path.split('/').filter(Boolean);
+    if (segments.length === 0) return false;
+
+    const blocked = new Set(['en', 'sk', 'cs', 'de', 'sl', 'hr', 'kontakt', 'gdpr', 'blog', 'tag', 'znacka', 'cart', 'kosik', 'wishlist', 'account']);
+    const localeSet = new Set(['en', 'sk', 'cs', 'de', 'sl', 'hr']);
+
+    if (segments.length === 1) {
+      const slug = segments[0];
+      if (blocked.has(slug)) return false;
+      return /[a-z0-9].*-[a-z0-9]/.test(slug);
+    }
+
+    if (segments.length === 2 && localeSet.has(segments[0])) {
+      const slug = segments[1];
+      if (blocked.has(slug)) return false;
+      return /[a-z0-9].*-[a-z0-9]/.test(slug);
+    }
+
+    return false;
   }
 
   extractPrice(container) {
@@ -177,8 +200,8 @@ class CategoryWatcher {
     const seen = new Set();
     const baseUrl = (() => { try { return new URL(categoryUrl).origin; } catch (e) { return ''; } })();
     const blocklistedPathHints = ['/collections/', '/search', '/vyhladavanie/', '/vyhledavani/', '/znacka/', '/tag/', '/blog/', '/cart/', '/kosik/', '/kosik', '/kontakt', '/gdpr'];
-    const likelyPriceText = (text) => /\d+\s*(?:,|\.)?\d*\s*€/.test(text || '');
-    const likelyAvailabilityText = (text) => /(skladom|vypredan|predobjed|do koš|do kos|detail|na objedn|dostupn)/i.test(text || '');
+    const likelyPriceText = (text) => /\d+\s*(?:,|\.)?\d*\s*(?:€|eur)/i.test(text || '');
+    const likelyAvailabilityText = (text) => /(skladom|vypredan|predobjed|do ko[šs]|detail|na objedn|dostupn|add to cart|in stock|out of stock|preorder)/i.test(text || '');
 
     const collectFromLink = ($, linkEl) => {
       const href = $(linkEl).attr('href') || '';
@@ -190,7 +213,8 @@ class CategoryWatcher {
       const container = $(linkEl).closest('.product, .p, .product-item, .products-block > div, .products .item, li, article, .card, .box');
       const containerText = container.text().replace(/\s+/g, ' ').trim();
       if (!containerText) return false;
-      if (!likelyPriceText(containerText) && !likelyAvailabilityText(containerText)) return false;
+      const hasCatalogSignals = container.find('.price, .money, .availability, .add-to-cart-button, .product-name, h2, h3, [itemprop="price"]').length > 0;
+      if (!likelyPriceText(containerText) && !likelyAvailabilityText(containerText) && !hasCatalogSignals) return false;
 
       const name = $(linkEl).attr('title')
         || $(linkEl).text().trim().replace(/\s+/g, ' ')
