@@ -1994,8 +1994,8 @@ export default function StockTracker() {
           {[
             { id: "products", label: "Izdelki", icon: <Package size={14} /> },
             { id: "keywords", label: "Sledenja", icon: <Activity size={14} /> },
-            { id: "discovered_keywords", label: "Rezultati iskanj", icon: <Search size={14} />, count: foundItems.filter(i => i.source_type === 'keyword').length },
-            { id: "discovered_categories", label: "Rezultati kategorij", icon: <TrendingDown size={14} />, count: foundItems.filter(i => i.source_type === 'category').length },
+    { id: "discovered_keywords", label: "Najdeno po ključnih besedah", icon: <Search size={14} />, count: foundItems.filter(i => i.source_type === 'keyword').length },
+    { id: "discovered_categories", label: "Najdeno v kategorijah", icon: <TrendingDown size={14} />, count: foundItems.filter(i => i.source_type === 'category').length },
             { id: "notifications", label: "Obvestila", icon: <Bell size={14} /> },
             { id: "settings", label: "Nastavitve", icon: <Settings size={14} /> },
           ].map(tab => (
