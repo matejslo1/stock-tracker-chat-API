@@ -501,6 +501,8 @@ async function initDatabase() {
   try { db.run("ALTER TABLE found_items ADD COLUMN in_stock INTEGER DEFAULT NULL"); } catch(e) {}
   try { db.run("ALTER TABLE found_items ADD COLUMN is_preorder INTEGER DEFAULT 0"); } catch(e) {}
   try { db.run("ALTER TABLE found_items ADD COLUMN original_price REAL"); } catch(e) {}
+  try { db.run("ALTER TABLE found_items ADD COLUMN status TEXT DEFAULT 'new'"); } catch(e) {}
+  db.run("UPDATE found_items SET status = 'new' WHERE status IS NULL");
   try { db.run("ALTER TABLE category_watches ADD COLUMN notify_stock_changes INTEGER DEFAULT 0"); } catch(e) {}
 
   // Helpful indexes (speed up filtering & history lookups)
