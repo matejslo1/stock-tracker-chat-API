@@ -148,6 +148,45 @@ const StoreBrandBadge = ({ store }) => {
   );
 };
 
+const MiniPriceChart = ({ history }) => {
+  const priced = history.filter(h => h.price != null);
+  if (priced.length < 2) return null;
+  const prices = priced.map(h => h.price);
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const range = max - min || 1;
+  const W = 200, H = 48, pad = 4;
+  const pts = priced.map((h, i) => {
+    const x = pad + (i / (priced.length - 1)) * (W - pad * 2);
+    const y = pad + (1 - (h.price - min) / range) * (H - pad * 2);
+    return `${x},${y}`;
+  }).join(' ');
+  const lastPrice = prices[prices.length - 1];
+  const firstPrice = prices[0];
+  const trend = lastPrice < firstPrice ? '#10b981' : lastPrice > firstPrice ? '#ef4444' : '#6b7280';
+  return (
+    <div className="mt-3">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs text-gray-400">Zgodovina cene</span>
+        <span className="text-xs font-semibold" style={{ color: trend }}>
+          {lastPrice < firstPrice ? '▼' : lastPrice > firstPrice ? '▲' : '—'} {lastPrice?.toFixed(2)} €
+        </span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-12 rounded-lg bg-gray-50">
+        <polyline points={pts} fill="none" stroke={trend} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        {priced.map((h, i) => {
+          const x = pad + (i / (priced.length - 1)) * (W - pad * 2);
+          const y = pad + (1 - (h.price - min) / range) * (H - pad * 2);
+          return i === priced.length - 1 ? <circle key={i} cx={x} cy={y} r="3" fill={trend} /> : null;
+        })}
+      </svg>
+      <div className="flex justify-between text-xs text-gray-400 mt-0.5">
+        <span>{min.toFixed(2)} €</span><span>{max.toFixed(2)} €</span>
+      </div>
+    </div>
+  );
+};
+
 const StockBadge = ({ inStock, isPreorder }) => {
   if (isPreorder) {
     return (
@@ -179,7 +218,13 @@ const Toggle = ({ checked, onChange, color = "#10b981" }) => (
 // Product Card
 const ProductCard = ({ product, onCheck, onDelete, onEdit, onPause, checking, selected, onSelect }) => {
   const [expanded, setExpanded] = useState(false);
+  const [history, setHistory] = useState(null);
   const displayStore = detectStoreFromProduct(product);
+
+  useEffect(() => {
+    if (!expanded || history !== null) return;
+    apiFetch(`${API}/products/${product.id}/history`).then(r => r.ok ? r.json() : null).then(d => setHistory(d || { history: [], pctInStock: null }));
+  }, [expanded, product.id, history]);
   const isPaused = product.is_paused === 1 || product.is_paused === true;
   const cardTone = isPaused
     ? "border-gray-200 shadow-gray-100/50 opacity-60"
@@ -279,6 +324,17 @@ const ProductCard = ({ product, onCheck, onDelete, onEdit, onPause, checking, se
             <div><span className="text-gray-500">Obvestil:</span><span className="ml-2 font-semibold">{product.notification_count || 0}</span></div>
             <div><span className="text-gray-500">Dodano:</span><span className="ml-2 font-medium">{new Date(product.created_at).toLocaleDateString("sl-SI")}</span></div>
             <div><span className="text-gray-500">Zadnjič na zalogi:</span><span className="ml-2 font-medium">{product.last_in_stock ? timeAgo(product.last_in_stock) : "Nikoli"}</span></div>
+            {history?.pctInStock != null && (
+              <div className="col-span-2">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-gray-500 text-xs">Čas na zalogi</span>
+                  <span className="text-xs font-bold text-emerald-600">{history.pctInStock}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-1.5">
+                  <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: `${history.pctInStock}%` }} />
+                </div>
+              </div>
+            )}
             {product.price_drop_threshold_amount && (
               <div className="col-span-2 flex items-center gap-1.5 text-blue-600 font-semibold">
                 <TrendingDown size={14} /> Prag znižanja: -{product.price_drop_threshold_amount.toFixed(2)} EUR
@@ -290,6 +346,7 @@ const ProductCard = ({ product, onCheck, onDelete, onEdit, onPause, checking, se
               </div>
             )}
           </div>
+          {history && <MiniPriceChart history={history.history} />}
         </div>
       )}
     </div>
@@ -2275,9 +2332,10 @@ export default function StockTracker() {
                                 <ExternalLink size={12} /> {w.category_url}
                               </a>
                             </div>
-                            <div className="text-right shrink-0">
-                              <div className="text-2xl font-black text-gray-900">{w.last_found_count || 0}</div>
-                              <div className="text-xs text-gray-500">najdenih</div>
+                            <div className="flex gap-4 shrink-0 text-right">
+                              <div><div className="text-xl font-black text-gray-900">{w.last_found_count || 0}</div><div className="text-xs text-gray-400">najdenih</div></div>
+                              <div><div className="text-xl font-black text-emerald-600">{w.in_stock_found || 0}</div><div className="text-xs text-gray-400">na zalogi</div></div>
+                              <div><div className="text-xl font-black text-indigo-600">{w.promoted_count || 0}</div><div className="text-xs text-gray-400">dodanih</div></div>
                             </div>
                           </div>
                           <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
@@ -2355,9 +2413,10 @@ export default function StockTracker() {
                                 <ExternalLink size={12} /> {w.store_url}
                               </a>
                             </div>
-                            <div className="text-right shrink-0">
-                              <div className="text-2xl font-black text-gray-900">{w.last_found_count || 0}</div>
-                              <div className="text-xs text-gray-500">najdenih</div>
+                            <div className="flex gap-4 shrink-0 text-right">
+                              <div><div className="text-xl font-black text-gray-900">{w.last_found_count || 0}</div><div className="text-xs text-gray-400">najdenih</div></div>
+                              <div><div className="text-xl font-black text-emerald-600">{w.in_stock_found || 0}</div><div className="text-xs text-gray-400">na zalogi</div></div>
+                              <div><div className="text-xl font-black text-indigo-600">{w.promoted_count || 0}</div><div className="text-xs text-gray-400">dodanih</div></div>
                             </div>
                           </div>
                           <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">

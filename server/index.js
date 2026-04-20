@@ -176,6 +176,19 @@ app.patch("/api/products/:id/pause", (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.get("/api/products/:id/history", (req, res) => {
+  try {
+    const rows = db.prepare(
+      "SELECT in_stock, price, checked_at FROM stock_history WHERE product_id = ? ORDER BY checked_at ASC LIMIT 200"
+    ).all(req.params.id);
+    // Compute time-in-stock percentage
+    const total = rows.length;
+    const inStockCount = rows.filter(r => r.in_stock === 1).length;
+    const pctInStock = total > 0 ? Math.round((inStockCount / total) * 100) : null;
+    res.json({ history: rows, pctInStock, total });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 
 // Stores
 app.get("/api/stores", (req, res) => {
@@ -416,7 +429,10 @@ app.post("/api/telegram/test", async (req, res) => {
 app.get("/api/keyword-watches", (req, res) => {
   try {
     const watches = db.prepare("SELECT *, (SELECT COUNT(*) FROM json_each(known_product_urls)) as known_count FROM keyword_watches ORDER BY created_at DESC").all();
-    res.json(watches.map(w => ({ ...w, known_count: w.known_count || 0, active: w.active !== 0 })));
+    res.json(watches.map(w => {
+      const inStockFound = db.prepare("SELECT COUNT(*) as n FROM found_items WHERE source_type='keyword' AND source_id=? AND in_stock=1").get(w.id)?.n || 0;
+      return { ...w, known_count: w.known_count || 0, active: w.active !== 0, in_stock_found: inStockFound, promoted_count: w.promoted_count || 0 };
+    }));
   } catch (e) {
     // Fallback without json_each
     try {
@@ -424,7 +440,8 @@ app.get("/api/keyword-watches", (req, res) => {
       res.json(watches.map(w => {
         let knownCount = 0;
         try { knownCount = JSON.parse(w.known_product_urls || "[]").length; } catch(e2) {}
-        return { ...w, known_count: knownCount, active: w.active !== 0 };
+        const inStockFound = db.prepare("SELECT COUNT(*) as n FROM found_items WHERE source_type='keyword' AND source_id=? AND in_stock=1").get(w.id)?.n || 0;
+        return { ...w, known_count: knownCount, active: w.active !== 0, in_stock_found: inStockFound, promoted_count: w.promoted_count || 0 };
       }));
     } catch(e2) { res.status(500).json({ error: e2.message }); }
   }
@@ -528,14 +545,18 @@ app.post("/api/keyword-watches/:id/reset", (req, res) => {
 app.get("/api/category-watches", (req, res) => {
   try {
     const watches = db.prepare("SELECT *, (SELECT COUNT(*) FROM json_each(known_product_urls)) as known_count FROM category_watches ORDER BY created_at DESC").all();
-    res.json(watches.map(w => ({ ...w, known_count: w.known_count || 0, active: w.active !== 0 })));
+    res.json(watches.map(w => {
+      const inStockFound = db.prepare("SELECT COUNT(*) as n FROM found_items WHERE source_type='category' AND source_id=? AND in_stock=1").get(w.id)?.n || 0;
+      return { ...w, known_count: w.known_count || 0, active: w.active !== 0, in_stock_found: inStockFound, promoted_count: w.promoted_count || 0 };
+    }));
   } catch (e) {
     try {
       const watches = db.prepare("SELECT * FROM category_watches ORDER BY created_at DESC").all();
       res.json(watches.map(w => {
         let knownCount = 0;
         try { knownCount = JSON.parse(w.known_product_urls || "[]").length; } catch (e2) {}
-        return { ...w, known_count: knownCount, active: w.active !== 0 };
+        const inStockFound = db.prepare("SELECT COUNT(*) as n FROM found_items WHERE source_type='category' AND source_id=? AND in_stock=1").get(w.id)?.n || 0;
+        return { ...w, known_count: knownCount, active: w.active !== 0, in_stock_found: inStockFound, promoted_count: w.promoted_count || 0 };
       }));
     } catch (e2) { res.status(500).json({ error: e2.message }); }
   }
@@ -667,6 +688,13 @@ app.post("/api/found-items/:id/promote", async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?, ?)`
     ).run(item.name, item.url, store, item.price, item.in_stock, item.is_preorder || 0, globalInterval, item.image_url);
 
+    // Increment promoted_count on the source watch
+    if (item.source_type === 'keyword' && item.source_id) {
+      db.prepare("UPDATE keyword_watches SET promoted_count = promoted_count + 1 WHERE id = ?").run(item.source_id);
+    } else if (item.source_type === 'category' && item.source_id) {
+      db.prepare("UPDATE category_watches SET promoted_count = promoted_count + 1 WHERE id = ?").run(item.source_id);
+    }
+
     // Remove from found_items
     db.prepare("DELETE FROM found_items WHERE id = ?").run(req.params.id);
 
@@ -725,13 +753,18 @@ app.post("/api/found-items/bulk-promote", async (req, res) => {
            VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?, ?)`
         ).run(item.name, item.url, store, item.price, item.in_stock, item.is_preorder || 0, globalInterval, item.image_url);
 
+        if (item.source_type === 'keyword' && item.source_id) {
+          db.prepare("UPDATE keyword_watches SET promoted_count = promoted_count + 1 WHERE id = ?").run(item.source_id);
+        } else if (item.source_type === 'category' && item.source_id) {
+          db.prepare("UPDATE category_watches SET promoted_count = promoted_count + 1 WHERE id = ?").run(item.source_id);
+        }
         db.prepare("DELETE FROM found_items WHERE id = ?").run(id);
         promoted++;
-      } catch(e) { 
+      } catch(e) {
         if (e.message?.includes("UNIQUE")) {
           db.prepare("DELETE FROM found_items WHERE id = ?").run(id);
         }
-        errors++; 
+        errors++;
       }
     }
     res.json({ ok: true, promoted, errors });

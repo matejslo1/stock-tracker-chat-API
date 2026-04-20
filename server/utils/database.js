@@ -505,6 +505,8 @@ async function initDatabase() {
   db.run("UPDATE found_items SET status = 'new' WHERE status IS NULL");
   try { db.run("ALTER TABLE category_watches ADD COLUMN notify_stock_changes INTEGER DEFAULT 0"); } catch(e) {}
   try { db.run("ALTER TABLE products ADD COLUMN is_paused INTEGER DEFAULT 0"); } catch(e) {}
+  try { db.run("ALTER TABLE keyword_watches ADD COLUMN promoted_count INTEGER DEFAULT 0"); } catch(e) {}
+  try { db.run("ALTER TABLE category_watches ADD COLUMN promoted_count INTEGER DEFAULT 0"); } catch(e) {}
 
   // Helpful indexes (speed up filtering & history lookups)
   // NOTE: create indexes AFTER ALL tables exist. Otherwise a fresh DB will crash.
