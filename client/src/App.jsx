@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Package, Plus, Minus, RefreshCw, Bell, Settings, Trash2, Eye, Edit3, Send, ShoppingCart, TrendingDown, Activity, X, Check, AlertTriangle, ExternalLink, Clock, Zap, ChevronDown, ChevronUp, Search, BarChart3, Key, Save, ShoppingBag, Link } from "lucide-react";
+import { Package, Plus, Minus, RefreshCw, Bell, Settings, Trash2, Eye, Edit3, Send, ShoppingCart, TrendingDown, Activity, X, Check, AlertTriangle, ExternalLink, Clock, Zap, ChevronDown, ChevronUp, Search, BarChart3, Key, Save, ShoppingBag, Link, PauseCircle, PlayCircle } from "lucide-react";
 
 
 // API helper: attaches x-api-key header when VITE_API_KEY is set
@@ -177,14 +177,17 @@ const Toggle = ({ checked, onChange, color = "#10b981" }) => (
 );
 
 // Product Card
-const ProductCard = ({ product, onCheck, onDelete, onEdit, checking, selected, onSelect }) => {
+const ProductCard = ({ product, onCheck, onDelete, onEdit, onPause, checking, selected, onSelect }) => {
   const [expanded, setExpanded] = useState(false);
   const displayStore = detectStoreFromProduct(product);
-  const cardTone = product.is_preorder
-    ? "border-amber-200 shadow-amber-100/50 shadow-lg"
-    : product.in_stock
-      ? "border-emerald-200 shadow-emerald-100/50 shadow-lg"
-      : "border-red-200 shadow-red-100/50 shadow-lg";
+  const isPaused = product.is_paused === 1 || product.is_paused === true;
+  const cardTone = isPaused
+    ? "border-gray-200 shadow-gray-100/50 opacity-60"
+    : product.is_preorder
+      ? "border-amber-200 shadow-amber-100/50 shadow-lg"
+      : product.in_stock
+        ? "border-emerald-200 shadow-emerald-100/50 shadow-lg"
+        : "border-red-200 shadow-red-100/50 shadow-lg";
   return (
     <div onClick={onSelect ? (e) => { if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'A' && e.target.tagName !== 'INPUT') onSelect(); } : undefined}
       className={cn("group relative bg-white rounded-2xl border transition-all duration-300 overflow-hidden",
@@ -252,9 +255,13 @@ const ProductCard = ({ product, onCheck, onDelete, onEdit, checking, selected, o
             <button onClick={() => setExpanded(!expanded)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
               {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </button>
-            <button onClick={() => onCheck(product.id)} disabled={checking}
-              className={cn("p-2 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition-colors", checking && "animate-spin")}>
+            <button onClick={() => onCheck(product.id)} disabled={checking || isPaused}
+              className={cn("p-2 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition-colors", checking && "animate-spin", isPaused && "opacity-30 cursor-not-allowed")}>
               <RefreshCw size={16} />
+            </button>
+            <button onClick={() => onPause(product.id)} title={isPaused ? "Nadaljuj sledenje" : "Pavziraj sledenje"}
+              className={cn("p-2 rounded-lg transition-colors", isPaused ? "text-amber-500 hover:bg-amber-50 hover:text-amber-600" : "text-gray-400 hover:bg-gray-100 hover:text-gray-600")}>
+              {isPaused ? <PlayCircle size={16} /> : <PauseCircle size={16} />}
             </button>
             <button onClick={() => onEdit(product)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
               <Edit3 size={16} />
@@ -1580,6 +1587,15 @@ export default function StockTracker() {
     fetchProducts();
   };
 
+  const handlePause = async (id) => {
+    const res = await apiFetch(`${API}/products/${id}/pause`, { method: "PATCH" });
+    if (res.ok) {
+      const data = await res.json();
+      showToast(data.is_paused ? "Sledenje pavzirano" : "Sledenje nadaljevano", "info");
+      fetchProducts();
+    }
+  };
+
   const handleCheck = async (id) => {
     setCheckingId(id);
     try {
@@ -2185,7 +2201,7 @@ export default function StockTracker() {
                         <div className="grid gap-4 sm:grid-cols-2 pb-8">
                           {filteredProducts.map(p => (
                             <ProductCard key={p.id} product={p} onCheck={handleCheck} onDelete={handleDelete}
-                              onEdit={setEditProduct} checking={checkingId === p.id}
+                              onEdit={setEditProduct} onPause={handlePause} checking={checkingId === p.id}
                               selected={selectedIds.has(p.id)}
                               onSelect={() => toggleSelect(p.id)} />
                           ))}

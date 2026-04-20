@@ -166,6 +166,16 @@ app.delete("/api/products/:id", (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.patch("/api/products/:id/pause", (req, res) => {
+  try {
+    const product = db.prepare("SELECT id, is_paused FROM products WHERE id = ?").get(req.params.id);
+    if (!product) return res.status(404).json({ error: "Not found" });
+    const newPaused = product.is_paused ? 0 : 1;
+    db.prepare("UPDATE products SET is_paused = ? WHERE id = ?").run(newPaused, product.id);
+    res.json({ ok: true, is_paused: newPaused });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 
 // Stores
 app.get("/api/stores", (req, res) => {

@@ -485,7 +485,7 @@ class GenericScraper {
       result.rawStockText = availabilityText;
       if (this.detectPreorderText(storeMeta.preorder_terms || [], availabilityText)) result.isPreorder = true;
       if (/vypredan|nie je skladom|nedostupn|na objednavku|na objednávku|out of stock|sold out|not available|unavailable/.test(availabilityText)) result.inStock = false;
-      else if (/skladom|na sklade|\(\s*\d+\s*ks\)|in stock|available/.test(availabilityText)) result.inStock = true;
+      else if (/skladom|na sklade|\(\s*\d+\s*ks\)|in stock/.test(availabilityText)) result.inStock = true;
     }
 
     const priceText = [

@@ -82,7 +82,10 @@ class StockChecker {
     try {
       const globalInterval = parseInt(process.env.CHECK_INTERVAL_MINUTES || 5);
       const now = Date.now();
-      const allProducts = db.prepare('SELECT * FROM products').all();
+      // Cleanup: delete notifications older than 30 days
+      db.prepare("DELETE FROM notifications WHERE created_at < datetime('now', '-30 days')").run();
+
+      const allProducts = db.prepare('SELECT * FROM products WHERE is_paused = 0 OR is_paused IS NULL').all();
 
       const products = force ? allProducts : allProducts.filter(product => {
         const productInterval = product.check_interval_minutes && product.check_interval_minutes > 0
