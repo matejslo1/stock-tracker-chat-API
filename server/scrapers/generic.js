@@ -271,11 +271,10 @@ class GenericScraper {
 
           const activeVariant = variants.find(v => v.available) || variants[0];
           if (activeVariant) {
-            // Shopify .js returns price as integer cents (e.g. 1350 = 13.50 EUR)
-            // BUT some themes/apps patch it to return decimal string "13.50"
-            // Safe: if value > 500, assume cents
+            // Shopify .js returns price as integer cents (e.g. 500 = 5.00 EUR, 1350 = 13.50 EUR)
+            // Some themes patch it to return decimal string "13.50" — detect by checking if integer
             const rawPrice = parseFloat(activeVariant.price);
-            result.price = rawPrice > 500 ? rawPrice / 100 : rawPrice;
+            result.price = Number.isInteger(rawPrice) ? rawPrice / 100 : rawPrice;
             result.variantId = String(activeVariant.id);
             result.stockQty = activeVariant.inventory_quantity || 0;
           }
