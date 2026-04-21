@@ -57,7 +57,9 @@ async function buildPikazardCartHelperUrl(products) {
     await new Promise(r => setTimeout(r, 1200));
   }
 
-  const cartUrl = items.length > 0 ? `/cart-helper/pikazard?items=${encodeURIComponent(encodeCartItems(items))}` : null;
+  const base = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
+  const relativeUrl = `/cart-helper/pikazard?items=${encodeURIComponent(encodeCartItems(items))}`;
+  const cartUrl = items.length > 0 ? (base ? `${base}${relativeUrl}` : relativeUrl) : null;
   return { cartUrl, items, domain: 'https://www.pikazard.eu', errors };
 }
 
